@@ -53,6 +53,7 @@ import io.horizontalsystems.bankwallet.modules.balance.ui.BalanceScreen
 import io.horizontalsystems.bankwallet.modules.main.MainModule.MainNavigation
 import io.horizontalsystems.bankwallet.modules.manageaccount.dialogs.BackupRequiredDialog
 import io.horizontalsystems.bankwallet.modules.market.MarketScreen
+import io.horizontalsystems.bankwallet.modules.nfc.NFCMainScreen
 import io.horizontalsystems.bankwallet.modules.rateapp.RateApp
 import io.horizontalsystems.bankwallet.modules.releasenotes.ReleaseNotesFragment
 import io.horizontalsystems.bankwallet.modules.rooteddevice.RootedDeviceModule
@@ -226,7 +227,7 @@ private fun MainScreen(
                         fragmentNavController,
                         transactionsViewModel
                     )
-
+                    MainNavigation.NFCTransfer -> NFCMainScreen(fragmentNavController)
                     MainNavigation.Settings -> SettingsScreen(fragmentNavController)
                 }
             }

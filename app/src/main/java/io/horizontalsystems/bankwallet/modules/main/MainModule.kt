@@ -80,6 +80,7 @@ object MainModule {
         Market(R.drawable.ic_market_24, R.string.Market_Title),
         Balance(R.drawable.ic_wallet_24, R.string.Balance_Title),
         Transactions(R.drawable.ic_transactions_24, R.string.Transactions_Title),
+        NFCTransfer(R.drawable.ic_nfc_24, R.string.NFC_Title),
         Settings(R.drawable.ic_settings_24, R.string.Settings_Title);
 
         companion object {

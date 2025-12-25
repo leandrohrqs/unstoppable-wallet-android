@@ -232,6 +232,8 @@ class App : CoreApp(), WorkConfiguration.Provider, ImageLoaderFactory {
 
         instance = this
         preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+        
+        io.horizontalsystems.bankwallet.modules.nfc.core.ConfigManager.initialize(applicationContext)
 
         LocalStorageManager(preferences).apply {
             localStorage = this

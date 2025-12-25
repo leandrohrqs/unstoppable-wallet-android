@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -16,6 +17,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import io.horizontalsystems.bankwallet.R
+import io.horizontalsystems.bankwallet.modules.main.MainModule
+import io.horizontalsystems.bankwallet.modules.main.MainViewModel
 import io.horizontalsystems.bankwallet.core.AppLogger
 import io.horizontalsystems.bankwallet.core.BaseComposeFragment
 import io.horizontalsystems.bankwallet.core.slideFromBottom
@@ -125,7 +128,57 @@ private fun SendEvmConfirmationScreen(
                             HudHelper.showSuccessMessage(view, R.string.Hud_Text_Done)
                             delay(1200)
 
-                            navController.popBackStack(input.sendEntryPointDestId, true)
+                            if (input.sendEntryPointDestId == -1) {
+                                logger.info("NFC payment completed, navigating to Transactions tab")
+                                
+                                val pop1 = navController.popBackStack()
+                                logger.info("First popBackStack result: $pop1")
+                                delay(150)
+                                
+                                val pop2 = navController.popBackStack()
+                                logger.info("Second popBackStack result: $pop2")
+                                
+                                delay(400)
+                                
+                                var retries = 5
+                                var success = false
+                                while (retries > 0 && !success) {
+                                    try {
+                                        logger.info("Attempting to access mainFragment (retries left: $retries)")
+                                        val mainBackStackEntry = navController.getBackStackEntry(R.id.mainFragment)
+                                        logger.info("Successfully retrieved mainFragment back stack entry")
+                                        
+                                        val mainViewModelProvider = ViewModelProvider(
+                                            mainBackStackEntry.viewModelStore,
+                                            MainModule.Factory()
+                                        )
+                                        val mainViewModel = mainViewModelProvider[MainViewModel::class.java]
+                                        logger.info("Successfully retrieved MainViewModel")
+                                        
+                                        mainViewModel.onSelect(MainModule.MainNavigation.Transactions)
+                                        logger.info("✅ Successfully navigated to Transactions tab")
+                                        success = true
+                                    } catch (e: IllegalArgumentException) {
+                                        val attempt = 6 - retries
+                                        logger.info("mainFragment not in back stack yet (attempt $attempt/5), retrying...")
+                                        retries--
+                                        if (retries > 0) {
+                                            delay(300)
+                                        } else {
+                                            logger.warning("Failed to access mainFragment after all retries: ${e.message}", e)
+                                        }
+                                    } catch (e: Exception) {
+                                        logger.warning("Failed to access MainViewModel: ${e.message}", e)
+                                        break
+                                    }
+                                }
+                                
+                                if (!success) {
+                                    logger.warning("⚠️ Could not navigate to Transactions tab after NFC payment", Exception("Navigation failed"))
+                                }
+                            } else {
+                                navController.popBackStack(input.sendEntryPointDestId, true)
+                            }
                         } catch (t: Throwable) {
                             logger.warning("failed", t)
                             HudHelper.showErrorMessage(view, t.javaClass.simpleName)

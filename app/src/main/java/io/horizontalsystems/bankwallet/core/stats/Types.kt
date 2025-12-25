@@ -550,6 +550,7 @@ enum class StatTab(val key: String) {
     Markets("markets"),
     Balance("balance"),
     Transactions("transactions"),
+    NFC("nfc"),
     Settings("settings"),
     Overview("overview"),
     News("news"),

@@ -294,6 +294,7 @@ val MainModule.MainNavigation.statTab: StatTab
         MainModule.MainNavigation.Market -> StatTab.Markets
         MainModule.MainNavigation.Balance -> StatTab.Balance
         MainModule.MainNavigation.Transactions -> StatTab.Transactions
+        MainModule.MainNavigation.NFCTransfer -> StatTab.NFC
         MainModule.MainNavigation.Settings -> StatTab.Settings
     }
 

@@ -79,12 +79,14 @@ class MainViewModel(
                 MainNavigation.Market,
                 MainNavigation.Balance,
                 MainNavigation.Transactions,
+                MainNavigation.NFCTransfer,
                 MainNavigation.Settings,
             )
         } else {
             listOf(
                 MainNavigation.Balance,
                 MainNavigation.Transactions,
+                MainNavigation.NFCTransfer,
                 MainNavigation.Settings,
             )
         }
@@ -268,6 +270,14 @@ class MainViewModel(
         }
 
         MainNavigation.Balance -> {
+            MainModule.NavigationViewItem(
+                mainNavItem = item,
+                selected = selected,
+                enabled = true,
+            )
+        }
+
+        MainNavigation.NFCTransfer -> {
             MainModule.NavigationViewItem(
                 mainNavItem = item,
                 selected = selected,

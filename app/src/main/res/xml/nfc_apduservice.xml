@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/NFC_Service_Description"
+    android:requireDeviceUnlock="false">
+    
+    <!-- FreePay AID for NFC payments -->
+    <aid-group
+        android:category="other"
+        android:description="@string/NFC_Aid_Description">
+        <!-- AID: F046524545504159 (F0 + "FREEPAY" in ASCII) -->
+        <aid-filter android:name="F046524545504159"/>
+    </aid-group>
+</host-apdu-service>
+

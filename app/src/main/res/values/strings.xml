@@ -837,6 +837,31 @@
 
     <string name="Transactions_Title">Transactions</string>
     <string name="Transactions_EmptyList">No pending or past transactions yet.</string>
+
+    <!--NFC Transfer-->
+
+    <string name="NFC_Title">NFC</string>
+    <string name="NFC_Receive">Receive</string>
+    <string name="NFC_Send">Send</string>
+    <string name="NFC_Receive_Title">Receive Payment via NFC</string>
+    <string name="NFC_Send_Title">Send Payment via NFC</string>
+    <string name="NFC_EnterAmount">Enter Amount</string>
+    <string name="NFC_WaitingForDevice">Waiting for device...</string>
+    <string name="NFC_TapToReceive">Tap device to receive payment</string>
+    <string name="NFC_TapToPay">Tap device to pay</string>
+    <string name="NFC_NotAvailable">NFC not available</string>
+    <string name="NFC_NotEnabled">NFC is not enabled. Please enable it in settings.</string>
+    <string name="NFC_NotSupported">Your device does not support NFC</string>
+    <string name="NFC_EnableHCE">Enable NFC Card Emulation</string>
+    <string name="NFC_PaymentReceived">Payment received!</string>
+    <string name="NFC_PaymentSent">Payment sent!</string>
+    <string name="NFC_Error">NFC error occurred</string>
+    <string name="NFC_ConnectionLost">NFC connection lost</string>
+    <string name="NFC_ReadyToReceive">Ready to receive payment</string>
+    <string name="NFC_ReadyToSend">Ready to send payment</string>
+    <string name="NFC_Processing">Processing...</string>
+    <string name="NFC_Service_Description">Unstoppable NFC Payment Service</string>
+    <string name="NFC_Aid_Description">NFC payment protocol</string>
     <string name="Transactions_WaitForSync">Please wait for the sync to finish.</string>
     <string name="Transactions_Pending">Pending</string>
     <string name="Transactions_Receive">Received</string>

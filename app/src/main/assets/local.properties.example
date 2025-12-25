@@ -1,0 +1,7 @@
+# Unstoppable Wallet NFC Payment Configuration
+# Copy this file to app/src/main/assets/local.properties and fill in your values
+
+# Alchemy API Key (for NFC payment transaction monitoring)
+# Get your API key from https://www.alchemy.com/
+alchemy.api.key=YOUR_ALCHEMY_API_KEY_HERE
+
