@@ -849,6 +849,8 @@
     <string name="NFC_WaitingForDevice">Waiting for device...</string>
     <string name="NFC_TapToReceive">Tap device to receive payment</string>
     <string name="NFC_TapToPay">Tap device to pay</string>
+    <string name="NFC_WaitingForPayment">Waiting for payment</string>
+    <string name="NFC_PaymentConfirmed">Payment confirmed</string>
     <string name="NFC_NotAvailable">NFC not available</string>
     <string name="NFC_NotEnabled">NFC is not enabled. Please enable it in settings.</string>
     <string name="NFC_NotSupported">Your device does not support NFC</string>

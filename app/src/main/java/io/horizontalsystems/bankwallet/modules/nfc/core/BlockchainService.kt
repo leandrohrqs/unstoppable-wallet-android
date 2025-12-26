@@ -65,9 +65,11 @@ class BlockchainService(private val context: Context) {
     )
     
     /**
-     * Get transaction status by hash.
+     * Get transaction status by hash with confirmation check.
+     * For NFC payments, minConfirmations=1 is used for faster confirmation.
+     * For higher security, use minConfirmations=12 (BaseEvmAdapter.confirmationsThreshold).
      */
-    suspend fun getTransactionStatus(txHash: String, chainId: Int): TransactionStatus = 
+    suspend fun getTransactionStatus(txHash: String, chainId: Int, minConfirmations: Int = 1): TransactionStatus = 
         withContext(Dispatchers.IO) {
         try {
             val config = CHAIN_CONFIGS[chainId] ?: return@withContext TransactionStatus.UNKNOWN
@@ -77,7 +79,7 @@ class BlockchainService(private val context: Context) {
             
             val url = "${config.rpcUrl}$alchemyApiKey"
             
-            val json = """
+            val receiptJson = """
                 {
                     "jsonrpc": "2.0",
                     "method": "eth_getTransactionReceipt",
@@ -86,22 +88,58 @@ class BlockchainService(private val context: Context) {
                 }
             """.trimIndent()
             
-            val request = Request.Builder()
+            val receiptRequest = Request.Builder()
                 .url(url)
-                .post(json.toRequestBody("application/json".toMediaType()))
+                .post(receiptJson.toRequestBody("application/json".toMediaType()))
                 .build()
             
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: return@withContext TransactionStatus.PENDING
+            val receiptResponse = client.newCall(receiptRequest).execute()
+            val receiptBody = receiptResponse.body?.string() ?: return@withContext TransactionStatus.PENDING
             
-            val result = gson.fromJson(responseBody, Map::class.java)["result"] as? Map<*, *>
-            if (result != null) {
-                val status = result["status"] as? String
-                return@withContext when (status) {
-                    "0x1" -> TransactionStatus.SUCCESS
-                    "0x0" -> TransactionStatus.FAILED
-                    else -> TransactionStatus.PENDING
+            val receiptResult = gson.fromJson(receiptBody, Map::class.java)["result"] as? Map<*, *>
+            if (receiptResult == null) {
+                return@withContext TransactionStatus.PENDING
+            }
+            
+            val status = receiptResult["status"] as? String
+            if (status == "0x0") {
+                return@withContext TransactionStatus.FAILED
+            }
+            if (status != "0x1") {
+                return@withContext TransactionStatus.PENDING
+            }
+            
+            val blockNumberHex = receiptResult["blockNumber"] as? String ?: return@withContext TransactionStatus.PENDING
+            val blockNumber = blockNumberHex.removePrefix("0x").toLongOrNull(16) ?: return@withContext TransactionStatus.PENDING
+            
+            val blockNumberJson = """
+                {
+                    "jsonrpc": "2.0",
+                    "method": "eth_blockNumber",
+                    "params": [],
+                    "id": 2
                 }
+            """.trimIndent()
+            
+            val blockNumberRequest = Request.Builder()
+                .url(url)
+                .post(blockNumberJson.toRequestBody("application/json".toMediaType()))
+                .build()
+            
+            val blockNumberResponse = client.newCall(blockNumberRequest).execute()
+            val blockNumberBody = blockNumberResponse.body?.string() ?: return@withContext TransactionStatus.PENDING
+            
+            val currentBlockResult = gson.fromJson(blockNumberBody, Map::class.java)["result"] as? String
+            val currentBlockNumber = currentBlockResult?.removePrefix("0x")?.toLongOrNull(16) ?: return@withContext TransactionStatus.PENDING
+            
+            val confirmations = (currentBlockNumber - blockNumber + 1).toInt()
+            
+            Log.d(TAG, "Transaction $txHash: blockNumber=$blockNumber, currentBlock=$currentBlockNumber, confirmations=$confirmations, minRequired=$minConfirmations")
+            
+            return@withContext if (confirmations >= minConfirmations) {
+                TransactionStatus.SUCCESS
+            } else {
+                TransactionStatus.PENDING
             }
         } catch (e: Exception) {
             logError("Error checking transaction status", e)

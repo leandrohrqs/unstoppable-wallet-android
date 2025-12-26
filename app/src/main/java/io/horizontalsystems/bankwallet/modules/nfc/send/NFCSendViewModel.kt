@@ -17,10 +17,13 @@ import io.horizontalsystems.bankwallet.core.IAdapterManager
 import io.horizontalsystems.bankwallet.core.managers.CurrencyManager
 import io.horizontalsystems.bankwallet.entities.Address
 import io.horizontalsystems.bankwallet.entities.Wallet
+import io.horizontalsystems.bankwallet.modules.nfc.core.BlockchainService
 import io.horizontalsystems.bankwallet.modules.nfc.core.EIP681Parser
 import io.horizontalsystems.bankwallet.modules.nfc.core.WalletIntegrationHelper
 import io.horizontalsystems.marketkit.models.TokenType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -38,12 +41,16 @@ class NFCSendViewModel(
         private const val TAG = "NFCSendViewModel"
         const val ACTION_PAYMENT_URI_RECEIVED = "io.horizontalsystems.bankwallet.PAYMENT_URI_RECEIVED"
         const val EXTRA_PAYMENT_URI = "payment_uri"
+        const val ACTION_TRANSACTION_SENT = "io.horizontalsystems.bankwallet.NFC_TRANSACTION_SENT"
+        const val EXTRA_TRANSACTION_HASH = "transaction_hash"
+        const val EXTRA_CHAIN_ID = "chain_id"
     }
 
     var uiState by mutableStateOf(NFCSendUiState())
         private set
 
     private val walletIntegrationHelper = WalletIntegrationHelper(accountManager, adapterManager, App.walletManager)
+    private var monitoringJob: Job? = null
 
     private val paymentUriReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -54,19 +61,30 @@ class NFCSendViewModel(
                         handlePaymentUri(paymentUri)
                     }
                 }
+                ACTION_TRANSACTION_SENT -> {
+                    val transactionHash = intent.getStringExtra(EXTRA_TRANSACTION_HASH)
+                    val chainId = intent.getIntExtra(EXTRA_CHAIN_ID, -1)
+                    if (transactionHash != null && chainId != -1) {
+                        startTransactionMonitoring(transactionHash, chainId)
+                    }
+                }
             }
         }
     }
 
     init {
         loadWalletAddress()
-        val intentFilter = IntentFilter(ACTION_PAYMENT_URI_RECEIVED)
+        val intentFilter = IntentFilter().apply {
+            addAction(ACTION_PAYMENT_URI_RECEIVED)
+            addAction(ACTION_TRANSACTION_SENT)
+        }
         LocalBroadcastManager.getInstance(App.instance).registerReceiver(paymentUriReceiver, intentFilter)
     }
 
     override fun onCleared() {
         super.onCleared()
         LocalBroadcastManager.getInstance(App.instance).unregisterReceiver(paymentUriReceiver)
+        monitoringJob?.cancel()
     }
 
     /**
@@ -201,6 +219,89 @@ class NFCSendViewModel(
         }
     }
 
+    /**
+     * Start monitoring transaction confirmation
+     */
+    fun startTransactionMonitoring(transactionHash: String, chainId: Int) {
+        monitoringJob?.cancel()
+        
+        Log.d(TAG, "🔍 [CUSTOMER] Starting transaction monitoring. Hash: $transactionHash, ChainId: $chainId")
+        
+        uiState = uiState.copy(
+            isWaitingForConfirmation = true,
+            transactionHash = transactionHash,
+            chainId = chainId,
+            isPaymentConfirmed = false
+        )
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val blockchainService = BlockchainService(App.instance)
+                
+                while (true) {
+                    delay(3000)
+                    
+                    val status = blockchainService.getTransactionStatus(transactionHash, chainId, minConfirmations = 1)
+                    
+                    when (status) {
+                        BlockchainService.TransactionStatus.SUCCESS -> {
+                            viewModelScope.launch(Dispatchers.Main) {
+                                completePayment(transactionHash)
+                            }
+                            break
+                        }
+                        BlockchainService.TransactionStatus.FAILED -> {
+                            viewModelScope.launch(Dispatchers.Main) {
+                                uiState = uiState.copy(
+                                    isWaitingForConfirmation = false,
+                                    statusMessage = "Transaction failed"
+                                )
+                            }
+                            break
+                        }
+                        BlockchainService.TransactionStatus.PENDING,
+                        BlockchainService.TransactionStatus.UNKNOWN -> {
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                logError("Error monitoring transaction", e)
+                viewModelScope.launch(Dispatchers.Main) {
+                    uiState = uiState.copy(
+                        isWaitingForConfirmation = false,
+                        statusMessage = "Error monitoring transaction"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Complete payment successfully
+     */
+    fun completePayment(transactionHash: String) {
+        Log.d(TAG, "✅ [CUSTOMER] Payment confirmed! Transaction hash: $transactionHash")
+        uiState = uiState.copy(
+            isWaitingForConfirmation = false,
+            isPaymentConfirmed = true,
+            transactionHash = transactionHash,
+            statusMessage = "Payment confirmed"
+        )
+    }
+    
+    /**
+     * Reset transaction status after showing confirmation
+     */
+    fun resetTransactionStatus() {
+        uiState = uiState.copy(
+            isWaitingForConfirmation = false,
+            isPaymentConfirmed = false,
+            transactionHash = null,
+            chainId = null
+        )
+        monitoringJob?.cancel()
+    }
+
     private fun logError(message: String, throwable: Throwable?) {
         Log.e(TAG, message, throwable)
     }
@@ -213,7 +314,11 @@ data class NFCSendUiState(
     val isActive: Boolean = false,
     val statusMessage: String = "",
     val walletAddress: String? = null,
-    val navigationEvent: NFCSendNavigationEvent? = null
+    val navigationEvent: NFCSendNavigationEvent? = null,
+    val isWaitingForConfirmation: Boolean = false,
+    val transactionHash: String? = null,
+    val isPaymentConfirmed: Boolean = false,
+    val chainId: Int? = null
 )
 
 /**

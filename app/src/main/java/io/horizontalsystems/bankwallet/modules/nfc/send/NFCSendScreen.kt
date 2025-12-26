@@ -1,14 +1,28 @@
 package io.horizontalsystems.bankwallet.modules.nfc.send
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -75,6 +89,13 @@ fun NFCSendScreen(
                 walletAddress = uiState.walletAddress
             )
         }
+        
+        NFCTopNotification(
+            isWaitingForConfirmation = uiState.isWaitingForConfirmation,
+            isPaymentConfirmed = uiState.isPaymentConfirmed,
+            onReset = { viewModel.resetTransactionStatus() },
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
@@ -234,6 +255,98 @@ private fun NFCActiveOverlay(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
+        }
+    }
+}
+
+/**
+ * Top notification banner for transaction status
+ * Cannot be closed by user - only disappears when transaction is confirmed and reset
+ */
+@Composable
+private fun NFCTopNotification(
+    isWaitingForConfirmation: Boolean,
+    isPaymentConfirmed: Boolean,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LaunchedEffect(isPaymentConfirmed) {
+        if (isPaymentConfirmed) {
+            kotlinx.coroutines.delay(5000)
+            onReset()
+        }
+    }
+    
+    val checkIconScale by animateFloatAsState(
+        targetValue = if (isPaymentConfirmed) 1f else 0f,
+        animationSpec = tween(durationMillis = 300)
+    )
+    
+    AnimatedVisibility(
+        visible = isWaitingForConfirmation || isPaymentConfirmed,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = if (isPaymentConfirmed) {
+                        ComposeAppTheme.colors.greenD
+                    } else {
+                        ComposeAppTheme.colors.jacob
+                    },
+                    shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
+                )
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = if (isPaymentConfirmed) 16.dp else 12.dp
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isPaymentConfirmed) {
+                    Icon(
+                        painter = painterResource(R.drawable.icon_20_check_1),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .graphicsLayer {
+                                scaleX = checkIconScale
+                                scaleY = checkIconScale
+                            },
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                } else if (isWaitingForConfirmation) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.5.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                
+                Text(
+                    text = if (isPaymentConfirmed) {
+                        stringResource(R.string.NFC_PaymentConfirmed)
+                    } else {
+                        stringResource(R.string.NFC_WaitingForPayment)
+                    },
+                    style = if (isPaymentConfirmed) {
+                        ComposeAppTheme.typography.headline2.copy(fontWeight = FontWeight.Bold)
+                    } else {
+                        ComposeAppTheme.typography.subhead
+                    },
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }

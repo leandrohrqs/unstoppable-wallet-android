@@ -105,6 +105,7 @@ class NFCReceiveViewModel(
      * Complete payment successfully
      */
     fun completePayment(transactionHash: String) {
+        Log.d(TAG, "✅ [MERCHANT] Payment confirmed! Transaction hash: $transactionHash")
         uiState = uiState.copy(
             isProcessing = false,
             isPaymentConfirmed = true,
@@ -342,6 +343,8 @@ class NFCReceiveViewModel(
     ) {
         monitoringJob?.cancel()
         
+        Log.d(TAG, "🔍 [MERCHANT] Starting payment monitoring. ChainId: $chainId, MerchantAddress: $merchantAddress, ExpectedAmount: $expectedAmountWei")
+        
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val blockchainService = BlockchainService(App.instance)
@@ -353,10 +356,59 @@ class NFCReceiveViewModel(
                     expectedTokenAddress = expectedTokenAddress
                 ) { transfer ->
                     viewModelScope.launch(Dispatchers.Main) {
-                        completePayment(transfer.hash)
+                        Log.d(TAG, "🔔 [MERCHANT] Incoming transfer detected! Hash: ${transfer.hash}, From: ${transfer.from}, To: ${transfer.to}, Value: ${transfer.value}")
                         
-                        kotlinx.coroutines.delay(3000)
-                        resetAfterSuccess()
+                        viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                val blockchainService = BlockchainService(App.instance)
+                                var verified = false
+                                var retries = 0
+                                val maxRetries = 10 // Wait up to 10 checks (30 seconds)
+                                
+                                while (!verified && retries < maxRetries) {
+                                    kotlinx.coroutines.delay(3000) // Check every 3 seconds (same as customer)
+                                    val status = blockchainService.getTransactionStatus(transfer.hash, chainId, minConfirmations = 1)
+                                    
+                                    when (status) {
+                                        BlockchainService.TransactionStatus.SUCCESS -> {
+                                            verified = true
+                                            viewModelScope.launch(Dispatchers.Main) {
+                                                completePayment(transfer.hash)
+                                                kotlinx.coroutines.delay(3000)
+                                                resetAfterSuccess()
+                                            }
+                                        }
+                                        BlockchainService.TransactionStatus.FAILED -> {
+                                            verified = true
+                                            viewModelScope.launch(Dispatchers.Main) {
+                                                handlePaymentError("Transaction failed on blockchain")
+                                            }
+                                        }
+                                        BlockchainService.TransactionStatus.PENDING,
+                                        BlockchainService.TransactionStatus.UNKNOWN -> {
+                                            retries++
+                                            Log.d(TAG, "⏳ [MERCHANT] Waiting for confirmations... (attempt $retries/$maxRetries)")
+                                        }
+                                    }
+                                }
+                                
+                                if (!verified) {
+                                    Log.d(TAG, "⚠️ [MERCHANT] Status verification timeout, confirming based on transfer detection")
+                                    viewModelScope.launch(Dispatchers.Main) {
+                                        completePayment(transfer.hash)
+                                        kotlinx.coroutines.delay(3000)
+                                        resetAfterSuccess()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                logError("Error verifying transaction status", e)
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    completePayment(transfer.hash)
+                                    kotlinx.coroutines.delay(3000)
+                                    resetAfterSuccess()
+                                }
+                            }
+                        }
                     }
                 }
                 

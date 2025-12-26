@@ -26,6 +26,11 @@ import io.horizontalsystems.bankwallet.core.stats.StatEvent
 import io.horizontalsystems.bankwallet.core.stats.StatPage
 import io.horizontalsystems.bankwallet.core.stats.stat
 import io.horizontalsystems.bankwallet.modules.confirm.ConfirmTransactionScreen
+import android.content.Intent
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import io.horizontalsystems.bankwallet.core.App
+import io.horizontalsystems.bankwallet.core.toHexString
+import io.horizontalsystems.bankwallet.modules.nfc.send.NFCSendViewModel
 import io.horizontalsystems.bankwallet.modules.send.evm.SendEvmData
 import io.horizontalsystems.bankwallet.modules.send.evm.SendEvmModule
 import io.horizontalsystems.bankwallet.modules.sendevmtransaction.SendEvmTransactionView
@@ -121,9 +126,28 @@ private fun SendEvmConfirmationScreen(
 
                         try {
                             logger.info("sending tx")
-                            viewModel.send()
+                            val sendResult = viewModel.send()
                             logger.info("success")
                             stat(page = StatPage.SendConfirmation, event = StatEvent.Send)
+
+                            if (input.sendEntryPointDestId == -1) {
+                                val transactionHash = sendResult.fullTransaction.transaction.hash.toHexString()
+                                val chainId = when (input.blockchainType) {
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Ethereum -> 1
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Optimism -> 10
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Polygon -> 137
+                                    io.horizontalsystems.marketkit.models.BlockchainType.ArbitrumOne -> 42161
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Base -> 8453
+                                    else -> 1
+                                }
+                                
+                                val intent = Intent(NFCSendViewModel.ACTION_TRANSACTION_SENT).apply {
+                                    putExtra(NFCSendViewModel.EXTRA_TRANSACTION_HASH, transactionHash)
+                                    putExtra(NFCSendViewModel.EXTRA_CHAIN_ID, chainId)
+                                }
+                                LocalBroadcastManager.getInstance(view.context).sendBroadcast(intent)
+                                logger.info("Sent transaction hash broadcast: $transactionHash, chainId: $chainId")
+                            }
 
                             HudHelper.showSuccessMessage(view, R.string.Hud_Text_Done)
                             delay(1200)

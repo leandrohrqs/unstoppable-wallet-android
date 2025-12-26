@@ -66,8 +66,8 @@ class SendEvmConfirmationViewModel(
         sectionViewItems = sectionViewItems
     )
 
-    suspend fun send() = withContext(Dispatchers.Default) {
-        sendTransactionService.sendTransaction()
+    suspend fun send(): io.horizontalsystems.bankwallet.modules.multiswap.sendtransaction.SendTransactionResult.Evm = withContext(Dispatchers.Default) {
+        val result = sendTransactionService.sendTransaction()
 
         val address = when (transactionDecoration) {
             is OutgoingEip20Decoration -> {
@@ -91,6 +91,8 @@ class SendEvmConfirmationViewModel(
         address?.let {
             recentAddressManager.setRecentAddress(Address(address), blockchainType)
         }
+        
+        result
     }
 
     class Factory(
