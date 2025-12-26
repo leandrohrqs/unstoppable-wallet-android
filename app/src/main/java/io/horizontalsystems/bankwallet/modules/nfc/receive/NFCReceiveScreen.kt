@@ -1,6 +1,7 @@
 package io.horizontalsystems.bankwallet.modules.nfc.receive
 
 import android.app.Activity
+import android.media.MediaPlayer
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Bundle
@@ -193,6 +194,18 @@ private fun NFCPaymentSuccessScreen(
     transactionHash: String,
     formattedAmount: String
 ) {
+    val context = LocalContext.current
+    
+    LaunchedEffect(transactionHash) {
+        try {
+            val mediaPlayer = MediaPlayer.create(context, R.raw.cashmachinesound)
+            mediaPlayer?.setOnCompletionListener { it.release() }
+            mediaPlayer?.start()
+        } catch (e: Exception) {
+            // Error playing sound - ignore silently
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
