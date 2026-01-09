@@ -712,6 +712,14 @@
     <string name="NFC_TransactionStatus_Found">¡Transacción encontrada!</string>
     <string name="NFC_TransactionStatus_Waiting">Esperando confirmación de pago</string>
     <string name="NFC_TransactionStatus_Confirmed">¡Pago confirmado!</string>
+    <string name="NFC_ReceiveStatus_WaitingForCustomer">Esperando cliente</string>
+    <string name="NFC_ReceiveStatus_Connecting">Conectando</string>
+    <string name="NFC_ReceiveStatus_Connected">Conectado</string>
+    <string name="NFC_ReceiveStatus_Searching">Buscando transacción</string>
+    <string name="NFC_ReceiveStatus_Found">¡Transacción encontrada!</string>
+    <string name="NFC_ReceiveStatus_WaitingConfirmation">Esperando confirmación de pago</string>
+    <string name="NFC_ReceiveStatus_Confirmed">¡Pago confirmado!</string>
+    <string name="NFC_ReceiveStatus_Failed">Pago fallido</string>
     <string name="Transactions_AccountCreated">Cuenta creada</string>
     <string name="Transactions_ChangeTrust">Cambiar confianza</string>
     <string name="Transactions_Completed">Finalizado</string>

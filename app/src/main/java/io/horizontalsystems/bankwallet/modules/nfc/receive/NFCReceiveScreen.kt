@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
@@ -17,10 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -80,15 +78,33 @@ fun NFCReceiveScreen(
             .background(ComposeAppTheme.colors.lawrence)
     ) {
         when {
-            uiState.isPaymentConfirmed -> {
-                NFCPaymentSuccessScreen(
-                    transactionHash = uiState.transactionHash ?: "",
-                    formattedAmount = uiState.formattedAmount
+            uiState.status == ReceivePaymentStatus.CONFIRMED -> {
+                val context = LocalContext.current
+                
+                LaunchedEffect(uiState.status, uiState.transactionHash) {
+                    if (uiState.status == ReceivePaymentStatus.CONFIRMED && uiState.transactionHash != null) {
+                        try {
+                            val mediaPlayer = MediaPlayer.create(context, R.raw.cashmachinesound)
+                            mediaPlayer?.setOnCompletionListener { it.release() }
+                            mediaPlayer?.start()
+                        } catch (e: Exception) {
+                            // Error playing sound - ignore silently
+                        }
+                        
+                        // Reset after 3 seconds to allow retry
+                        delay(3000)
+                        viewModel.resetAfterSuccess()
+                    }
+                }
+                
+                NFCReceiveStatusScreen(
+                    status = ReceivePaymentStatus.CONFIRMED,
+                    onCancel = { viewModel.resetAfterSuccess() }
                 )
             }
-            uiState.isProcessing -> {
-                NFCWaitingOverlay(
-                    statusMessage = uiState.statusMessage,
+            uiState.isProcessing && uiState.status != null -> {
+                NFCReceiveStatusScreen(
+                    status = uiState.status!!,
                     onCancel = { viewModel.cancelPayment() }
                 )
             }
@@ -187,135 +203,5 @@ private fun NFCAmountInputContent(
     }
 }
 
-/**
- * Success screen shown when payment is confirmed
- */
-@Composable
-private fun NFCPaymentSuccessScreen(
-    transactionHash: String,
-    formattedAmount: String
-) {
-    val context = LocalContext.current
-    
-    LaunchedEffect(transactionHash) {
-        try {
-            val mediaPlayer = MediaPlayer.create(context, R.raw.cashmachinesound)
-            mediaPlayer?.setOnCompletionListener { it.release() }
-            mediaPlayer?.start()
-        } catch (e: Exception) {
-            // Error playing sound - ignore silently
-        }
-    }
-    
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ComposeAppTheme.colors.remus),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Text(
-                text = "✓",
-                style = ComposeAppTheme.typography.headline1,
-                color = Color.White,
-                fontSize = 72.sp
-            )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "APPROVED",
-                style = ComposeAppTheme.typography.headline1,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = formattedAmount,
-                style = ComposeAppTheme.typography.title3,
-                color = Color.White.copy(alpha = 0.9f),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "Transaction: ${transactionHash.take(10)}...${transactionHash.takeLast(8)}",
-                style = ComposeAppTheme.typography.caption,
-                color = Color.White.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-/**
- * Overlay shown while waiting for NFC device
- */
-@Composable
-private fun NFCWaitingOverlay(
-    statusMessage: String,
-    onCancel: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ComposeAppTheme.colors.tyler.copy(alpha = 0.95f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .background(
-                        ComposeAppTheme.colors.jacob.copy(alpha = 0.1f),
-                        RoundedCornerShape(60.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "NFC",
-                    style = ComposeAppTheme.typography.title1,
-                    color = ComposeAppTheme.colors.jacob
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text(
-                text = statusMessage,
-                style = ComposeAppTheme.typography.headline2,
-                color = ComposeAppTheme.colors.leah,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = stringResource(R.string.NFC_WaitingForDevice),
-                style = ComposeAppTheme.typography.subhead,
-                color = ComposeAppTheme.colors.grey,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            ButtonPrimaryYellow(
-                modifier = Modifier
-                    .width(200.dp)
-                    .height(50.dp),
-                title = stringResource(R.string.Button_Cancel),
-                onClick = onCancel
-            )
-        }
-    }
-}
 
