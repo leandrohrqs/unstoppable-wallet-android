@@ -149,8 +149,7 @@ class NFCSendViewModel(
                             wallet = wallet,
                             recipientAddress = paymentRequest.recipient,
                             amount = paymentRequest.amount
-                        ),
-                        statusMessage = "Opening payment screen..."
+                        )
                     )
                 }
 
@@ -284,8 +283,7 @@ class NFCSendViewModel(
         uiState = uiState.copy(
             isWaitingForConfirmation = false,
             isPaymentConfirmed = true,
-            transactionHash = transactionHash,
-            statusMessage = "Payment confirmed"
+            transactionHash = transactionHash
         )
     }
     

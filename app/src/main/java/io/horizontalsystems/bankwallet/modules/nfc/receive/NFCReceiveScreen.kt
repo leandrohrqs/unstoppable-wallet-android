@@ -16,12 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import io.horizontalsystems.bankwallet.R
@@ -77,7 +77,7 @@ fun NFCReceiveScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ComposeAppTheme.colors.tyler)
+            .background(ComposeAppTheme.colors.lawrence)
     ) {
         when {
             uiState.isPaymentConfirmed -> {
@@ -122,11 +122,12 @@ private fun NFCAmountInputContent(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(ComposeAppTheme.colors.tyler)
+            .background(ComposeAppTheme.colors.lawrence)
     ) {
         val isCompactScreen = maxHeight < 600.dp
         val topPadding = if (isCompactScreen) 8.dp else 16.dp
         val amountTextStyle = if (isCompactScreen) ComposeAppTheme.typography.headline1 else ComposeAppTheme.typography.title3
+        val amountContainerPadding = if (isCompactScreen) 12.dp else 16.dp
         
         Column(
             modifier = Modifier

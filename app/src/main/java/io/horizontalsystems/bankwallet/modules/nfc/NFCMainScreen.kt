@@ -5,9 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.Scaffold
-import androidx.compose.material.Tab
-import androidx.compose.material.TabRow
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,10 +21,11 @@ import io.horizontalsystems.bankwallet.modules.nfc.core.NFCStatus
 import io.horizontalsystems.bankwallet.modules.nfc.receive.NFCReceiveScreen
 import io.horizontalsystems.bankwallet.modules.nfc.send.NFCSendScreen
 import io.horizontalsystems.bankwallet.ui.compose.ComposeAppTheme
-import io.horizontalsystems.bankwallet.ui.compose.TranslatableString
-import io.horizontalsystems.bankwallet.ui.compose.components.AppBar
 import io.horizontalsystems.bankwallet.ui.compose.components.ButtonPrimaryYellow
-import io.horizontalsystems.bankwallet.ui.compose.components.MenuItem
+import io.horizontalsystems.bankwallet.uiv3.components.HSScaffold
+import io.horizontalsystems.bankwallet.uiv3.components.tabs.TabItem
+import io.horizontalsystems.bankwallet.uiv3.components.tabs.TabsTop
+import io.horizontalsystems.bankwallet.uiv3.components.tabs.TabsTopType
 import kotlinx.coroutines.launch
 
 /**
@@ -52,68 +50,44 @@ fun NFCMainScreen(
     val nfcStatus = viewModel.nfcStatus
     val showNFCWarning = nfcStatus == NFCStatus.NOT_AVAILABLE || nfcStatus == NFCStatus.DISABLED
 
-    Scaffold(
-        backgroundColor = ComposeAppTheme.colors.tyler,
-        topBar = {
-            AppBar(
-                title = stringResource(R.string.NFC_Title),
-                menuItems = listOf(
-                    MenuItem(
-                        title = TranslatableString.ResString(R.string.Button_Close),
-                        icon = R.drawable.ic_close,
-                        onClick = { navController.popBackStack() }
-                    )
-                )
-            )
-        }
-    ) { paddingValues ->
+    HSScaffold(
+        title = stringResource(R.string.NFC_Title),
+        menuItems = listOf()
+    ) {
         if (showNFCWarning && nfcStatus != null) {
             NFCWarningScreen(
                 nfcStatus = nfcStatus,
                 onOpenSettings = { viewModel.openNFCSettings() },
                 onClose = { navController.popBackStack() },
-                modifier = Modifier.padding(paddingValues)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(ComposeAppTheme.colors.tyler)
+                    .background(ComposeAppTheme.colors.lawrence)
             ) {
-                TabRow(
-                    selectedTabIndex = pagerState.currentPage,
-                    backgroundColor = ComposeAppTheme.colors.tyler,
-                    contentColor = ComposeAppTheme.colors.jacob,
-                    indicator = { },
-                    divider = { }
-                ) {
-                    tabs.forEachIndexed { index, tab ->
-                        val title = when (tab) {
-                            NFCTab.RECEIVE -> stringResource(R.string.NFC_Receive)
-                            NFCTab.SEND -> stringResource(R.string.NFC_Send)
-                        }
-                        Tab(
-                            selected = pagerState.currentPage == index,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(index)
-                                }
-                                viewModel.onTabSelect(tab)
-                            },
-                            text = {
-                                Text(
-                                    text = title,
-                                    style = ComposeAppTheme.typography.headline2,
-                                    color = if (pagerState.currentPage == index)
-                                        ComposeAppTheme.colors.jacob
-                                    else
-                                        ComposeAppTheme.colors.grey
-                                )
-                            },
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
-                        )
+                val tabItems = tabs.mapIndexed { index, tab ->
+                    val title = when (tab) {
+                        NFCTab.RECEIVE -> stringResource(R.string.NFC_Receive)
+                        NFCTab.SEND -> stringResource(R.string.NFC_Send)
                     }
+                    TabItem(
+                        title = title,
+                        selected = pagerState.currentPage == index,
+                        item = tab
+                    )
+                }
+
+                TabsTop(
+                    type = TabsTopType.Fitted,
+                    tabs = tabItems
+                ) { selectedTab ->
+                    coroutineScope.launch {
+                        val index = tabs.indexOf(selectedTab)
+                        pagerState.animateScrollToPage(index)
+                    }
+                    viewModel.onTabSelect(selectedTab)
                 }
 
                 HorizontalPager(

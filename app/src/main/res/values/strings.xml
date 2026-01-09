@@ -851,6 +851,11 @@
     <string name="NFC_TapToPay">Tap device to pay</string>
     <string name="NFC_WaitingForPayment">Waiting for payment</string>
     <string name="NFC_PaymentConfirmed">Payment confirmed</string>
+    <string name="NFC_TransactionStatus_Sent">Transaction sent!</string>
+    <string name="NFC_TransactionStatus_Searching">Searching for transaction</string>
+    <string name="NFC_TransactionStatus_Found">Transaction found!</string>
+    <string name="NFC_TransactionStatus_Waiting">Waiting for payment confirmation</string>
+    <string name="NFC_TransactionStatus_Confirmed">Payment confirmed!</string>
     <string name="NFC_NotAvailable">NFC not available</string>
     <string name="NFC_NotEnabled">NFC is not enabled. Please enable it in settings.</string>
     <string name="NFC_NotSupported">Your device does not support NFC</string>

@@ -707,6 +707,11 @@
     <string name="Transactions_WaitForSync">Por favor, espere a que termine la sincronización.</string>
     <string name="Transactions_Pending">Pendiente</string>
     <string name="Transactions_Receive">Recibido</string>
+    <string name="NFC_TransactionStatus_Sent">¡Transacción enviada!</string>
+    <string name="NFC_TransactionStatus_Searching">Buscando transacción</string>
+    <string name="NFC_TransactionStatus_Found">¡Transacción encontrada!</string>
+    <string name="NFC_TransactionStatus_Waiting">Esperando confirmación de pago</string>
+    <string name="NFC_TransactionStatus_Confirmed">¡Pago confirmado!</string>
     <string name="Transactions_AccountCreated">Cuenta creada</string>
     <string name="Transactions_ChangeTrust">Cambiar confianza</string>
     <string name="Transactions_Completed">Finalizado</string>
