@@ -150,6 +150,25 @@ fun AppearanceScreen(navController: NavController) {
 
             VSpacer(24.dp)
 
+            HeaderText(text = stringResource(id = R.string.NFC_SettingsSectionTitle))
+            CellUniversalLawrenceSection(
+                listOf {
+                    SettingUniversalCell(
+                        title = R.string.NFC_Title,
+                        subtitle = R.string.NFC_SettingsDescription,
+                    ) {
+                        HsSwitch(
+                            checked = uiState.nfcEnabled,
+                            onCheckedChange = {
+                                viewModel.onNFCEnabledChange(it)
+                            }
+                        )
+                    }
+                }
+            )
+
+            VSpacer(24.dp)
+
             HeaderText(text = stringResource(id = R.string.Appearance_MarketsTab))
             CellUniversalLawrenceSection(
                 listOf(

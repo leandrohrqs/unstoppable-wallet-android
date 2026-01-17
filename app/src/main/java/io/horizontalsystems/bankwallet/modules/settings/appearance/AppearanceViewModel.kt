@@ -36,6 +36,7 @@ class AppearanceViewModel(
     private var balanceViewTypeOptions = buildBalanceViewTypeSelect(balanceViewTypeManager.balanceViewTypeFlow.value)
     private var priceChangeInterval = localStorage.priceChangeInterval
     private var priceChangeIntervalOptions = buildPriceChangeIntervalSelect(priceChangeInterval)
+    private var nfcEnabled = localStorage.nfcEnabled
     private val currentLanguageDisplayName: String
         get() = languageManager.currentLanguageName
 
@@ -88,7 +89,8 @@ class AppearanceViewModel(
         selectedBalanceViewType = balanceViewTypeManager.balanceViewType,
         priceChangeInterval = priceChangeInterval,
         priceChangeIntervalOptions = priceChangeIntervalOptions,
-        amountRoundingEnabled = amountRoundingEnabled
+        amountRoundingEnabled = amountRoundingEnabled,
+        nfcEnabled = nfcEnabled
     )
 
     private fun buildBalanceViewTypeSelect(value: BalanceViewType): Select<BalanceViewType> {
@@ -186,6 +188,16 @@ class AppearanceViewModel(
         )
     }
 
+    fun onNFCEnabledChange(enabled: Boolean) {
+        localStorage.nfcEnabled = enabled
+        nfcEnabled = enabled
+        // If NFC is disabled, reset the dismissed flag so modal can appear again
+        if (!enabled) {
+            localStorage.nfcEnableDialogDismissed = false
+        }
+        emitState()
+    }
+
 }
 
 data class AppearanceUIState(
@@ -202,5 +214,6 @@ data class AppearanceUIState(
     val selectedBalanceViewType: BalanceViewType,
     val priceChangeInterval: PriceChangeInterval,
     val priceChangeIntervalOptions: Select<PriceChangeInterval>,
-    val amountRoundingEnabled: Boolean
+    val amountRoundingEnabled: Boolean,
+    val nfcEnabled: Boolean
 )

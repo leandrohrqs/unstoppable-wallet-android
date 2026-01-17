@@ -38,6 +38,12 @@ class NFCCardEmulationService : HostApduService() {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
+        // Check if NFC is enabled in app settings
+        if (!App.localStorage.nfcEnabled) {
+            logError("NFC payment rejected - NFC not enabled in app settings", null)
+            return UNKNOWN
+        }
+
         sendBroadcast("NFC reader connected - processing request")
 
         // Handle SELECT command

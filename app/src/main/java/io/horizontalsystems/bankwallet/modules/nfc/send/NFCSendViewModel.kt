@@ -19,6 +19,7 @@ import io.horizontalsystems.bankwallet.entities.Address
 import io.horizontalsystems.bankwallet.entities.Wallet
 import io.horizontalsystems.bankwallet.modules.nfc.core.BlockchainService
 import io.horizontalsystems.bankwallet.modules.nfc.core.EIP681Parser
+import io.horizontalsystems.bankwallet.modules.nfc.core.NFCManager
 import io.horizontalsystems.bankwallet.modules.nfc.core.WalletIntegrationHelper
 import io.horizontalsystems.marketkit.models.TokenType
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,7 @@ class NFCSendViewModel(
 
     private val walletIntegrationHelper = WalletIntegrationHelper(accountManager, adapterManager, App.walletManager)
     private var monitoringJob: Job? = null
+    private var nfcManager: NFCManager? = null
 
     private val paymentUriReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -81,31 +83,71 @@ class NFCSendViewModel(
         LocalBroadcastManager.getInstance(App.instance).registerReceiver(paymentUriReceiver, intentFilter)
     }
 
+    /**
+     * Initialize NFC manager with context
+     */
+    fun initialize(context: Context) {
+        nfcManager = NFCManager(context)
+        checkNFCStatus()
+    }
+
+    /**
+     * Check NFC status (system and app level)
+     */
+    fun checkNFCStatus() {
+        val manager = nfcManager ?: return
+        val nfcSystemEnabled = manager.isNFCEnabled()
+        val nfcAppEnabled = App.localStorage.nfcEnabled
+        val nfcAvailable = manager.isNFCAvailable()
+
+        uiState = uiState.copy(
+            nfcSystemEnabled = nfcSystemEnabled,
+            nfcAppEnabled = nfcAppEnabled,
+            nfcAvailable = nfcAvailable,
+            isActive = nfcSystemEnabled && nfcAppEnabled
+        )
+    }
+
+    /**
+     * Request NFC enable in system settings
+     */
+    fun requestNFCEnable() {
+        nfcManager?.openNFCSettings()
+    }
+
+    /**
+     * Enable NFC in app (after system is enabled)
+     */
+    fun enableNFCInApp() {
+        App.localStorage.nfcEnabled = true
+        // Reset dismissed flag so modal can appear again if user disables and re-enables
+        App.localStorage.nfcEnableDialogDismissed = false
+        uiState = uiState.copy(
+            nfcAppEnabled = true,
+            isActive = uiState.nfcSystemEnabled && true
+        )
+    }
+
+    /**
+     * Mark the NFC enable dialog as dismissed (user canceled)
+     */
+    fun dismissNFCEnableDialog() {
+        App.localStorage.nfcEnableDialogDismissed = true
+    }
+
+    /**
+     * Check if NFC enable dialog should be shown
+     */
+    fun shouldShowNFCEnableDialog(): Boolean {
+        return !App.localStorage.nfcEnableDialogDismissed
+    }
+
     override fun onCleared() {
         super.onCleared()
         LocalBroadcastManager.getInstance(App.instance).unregisterReceiver(paymentUriReceiver)
         monitoringJob?.cancel()
     }
 
-    /**
-     * Activate NFC card emulation
-     */
-    fun activateNFC() {
-        uiState = uiState.copy(
-            isActive = true,
-            statusMessage = "Hold your device near the merchant's terminal"
-        )
-    }
-
-    /**
-     * Deactivate NFC card emulation
-     */
-    fun deactivateNFC() {
-        uiState = uiState.copy(
-            isActive = false,
-            statusMessage = ""
-        )
-    }
 
     /**
      * Update status message
@@ -316,7 +358,10 @@ data class NFCSendUiState(
     val isWaitingForConfirmation: Boolean = false,
     val transactionHash: String? = null,
     val isPaymentConfirmed: Boolean = false,
-    val chainId: Int? = null
+    val chainId: Int? = null,
+    val nfcSystemEnabled: Boolean = false,
+    val nfcAppEnabled: Boolean = false,
+    val nfcAvailable: Boolean = false
 )
 
 /**
