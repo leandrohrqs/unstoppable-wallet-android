@@ -18,6 +18,7 @@ import io.horizontalsystems.bankwallet.modules.nfc.core.ConfigManager
 import io.horizontalsystems.bankwallet.modules.nfc.core.WalletIntegrationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.math.BigDecimal
@@ -80,7 +81,7 @@ class NFCReceiveViewModel(
 
         uiState = uiState.copy(
             isProcessing = true,
-            statusMessage = "Tap customer's phone to receive payment"
+            status = ReceivePaymentStatus.WAITING_FOR_CUSTOMER
         )
     }
 
@@ -90,26 +91,25 @@ class NFCReceiveViewModel(
     fun cancelPayment() {
         uiState = uiState.copy(
             isProcessing = false,
-            statusMessage = ""
+            status = null
         )
     }
 
     /**
-     * Update payment status message
+     * Update payment status
      */
-    fun updateStatusMessage(message: String) {
-        uiState = uiState.copy(statusMessage = message)
+    private fun updateStatus(status: ReceivePaymentStatus) {
+        uiState = uiState.copy(status = status)
     }
 
     /**
      * Complete payment successfully
      */
     fun completePayment(transactionHash: String) {
+        Log.d(TAG, "✅ [MERCHANT] Payment confirmed! Transaction hash: $transactionHash")
         uiState = uiState.copy(
-            isProcessing = false,
-            isPaymentConfirmed = true,
-            transactionHash = transactionHash,
-            statusMessage = ""
+            status = ReceivePaymentStatus.CONFIRMED,
+            transactionHash = transactionHash
         )
     }
     
@@ -118,7 +118,8 @@ class NFCReceiveViewModel(
      */
     fun resetAfterSuccess() {
         uiState = uiState.copy(
-            isPaymentConfirmed = false,
+            isProcessing = false,
+            status = null,
             transactionHash = null
         )
         clearAmount()
@@ -128,19 +129,20 @@ class NFCReceiveViewModel(
      * Handle payment error
      */
     fun handlePaymentError(error: String) {
-        val userFriendlyMessage = when {
-            error.contains("Tag was lost", ignoreCase = true) -> "Connection lost. Please try again - hold devices closer and steady."
-            error.contains("timeout", ignoreCase = true) -> "Connection timeout. Try again."
-            error.contains("Unsupported", ignoreCase = true) -> "Device not supported."
-            else -> "Error: $error. Tap to try again."
-        }
-
         uiState = uiState.copy(
-            isProcessing = true,
-            statusMessage = userFriendlyMessage
+            status = ReceivePaymentStatus.FAILED
         )
 
         logError("Payment error: $error", null)
+        
+        // Reset after 3 seconds to allow retry
+        viewModelScope.launch {
+            delay(3000)
+            uiState = uiState.copy(
+                isProcessing = false,
+                status = null
+            )
+        }
     }
 
     /**
@@ -153,7 +155,7 @@ class NFCReceiveViewModel(
             
             try {
                 withContext(Dispatchers.Main) {
-                    updateStatusMessage("Connected! Processing...")
+                    updateStatus(ReceivePaymentStatus.CONNECTING)
                 }
 
                 when {
@@ -180,7 +182,12 @@ class NFCReceiveViewModel(
             } catch (e: android.nfc.TagLostException) {
                 logError("Tag lost during communication", e)
                 withContext(Dispatchers.Main) {
-                    updateStatusMessage("Connection lost. Hold devices closer and try again.")
+                    handlePaymentError("Device moved away. Please try again.")
+                }
+            } catch (e: SecurityException) {
+                logError("Security exception during NFC communication", e)
+                withContext(Dispatchers.Main) {
+                    handlePaymentError("NFC permission error. Please try again.")
                 }
             } catch (e: Exception) {
                 logError("Error processing NFC tag", e)
@@ -209,8 +216,11 @@ class NFCReceiveViewModel(
 
             if (response.size >= 2 && response[response.size - 2] == 0x90.toByte() && response[response.size - 1] == 0x00.toByte()) {
                 withContext(Dispatchers.Main) {
-                    updateStatusMessage("Device connected. Requesting wallet address...")
+                    updateStatus(ReceivePaymentStatus.CONNECTED)
                 }
+                
+                // Small delay only for UI to update, then continue immediately
+                delay(200)
 
                 val walletAddressUri = "wallet:address"
                 val uriBytes = walletAddressUri.toByteArray(StandardCharsets.UTF_8)
@@ -247,10 +257,6 @@ class NFCReceiveViewModel(
                     val addressBytes = response.copyOfRange(0, response.size - 2)
                     val walletAddress = String(addressBytes, StandardCharsets.UTF_8)
                     
-                    withContext(Dispatchers.Main) {
-                        updateStatusMessage("Wallet address received. Preparing payment...")
-                    }
-
                     continuePaymentFlow(isoDep, walletAddress, amount)
                 } else {
                     logError("Failed to get wallet address from customer device", null)
@@ -264,17 +270,29 @@ class NFCReceiveViewModel(
                     handlePaymentError("Failed to connect to wallet app. Ensure it's active.")
                 }
             }
+        } catch (e: android.nfc.TagLostException) {
+            logError("Tag lost during IsoDep processing", e)
+            withContext(Dispatchers.Main) {
+                handlePaymentError("Device moved away. Please try again.")
+            }
+        } catch (e: SecurityException) {
+            logError("Security exception during IsoDep processing", e)
+            withContext(Dispatchers.Main) {
+                handlePaymentError("NFC permission error. Please try again.")
+            }
         } catch (e: Exception) {
             logError("IsoDep processing error", e)
-            throw e
+            withContext(Dispatchers.Main) {
+                handlePaymentError(e.message ?: "NFC communication error")
+            }
         }
     }
 
     private suspend fun processWithNdef(ndef: Ndef, amount: BigDecimal) = withContext(Dispatchers.IO) {
         try {
             withContext(Dispatchers.Main) {
-                updateStatusMessage("NDEF communication not yet supported")
-                kotlinx.coroutines.delay(2000)
+                updateStatus(ReceivePaymentStatus.FAILED)
+                delay(2000)
                 handlePaymentError("NDEF not supported yet")
             }
         } catch (e: Exception) {
@@ -296,14 +314,15 @@ class NFCReceiveViewModel(
                 return@withContext
             }
             
-            withContext(Dispatchers.Main) {
-                updateStatusMessage("Token selected: ${selectedToken.symbol}. Sending payment request...")
-            }
-
+            // Process payment URI quickly without delay
             val paymentUri = walletIntegrationHelper.createEIP681URI(selectedToken, amount)
             val success = sendPaymentUriViaIsoDep(isoDep, paymentUri)
 
             if (success) {
+                withContext(Dispatchers.Main) {
+                    updateStatus(ReceivePaymentStatus.SEARCHING)
+                }
+                
                 val merchantAddress = walletIntegrationHelper.getAddressForBlockchain(selectedToken.token.blockchainType)
                 if (merchantAddress != null && ConfigManager.hasAlchemyApiKey()) {
                     startPaymentMonitoring(
@@ -313,15 +332,21 @@ class NFCReceiveViewModel(
                         expectedTokenAddress = if (selectedToken.address != "0x0000000000000000000000000000000000000000") selectedToken.address else null
                     )
                 }
-                
-                withContext(Dispatchers.Main) {
-                    updateStatusMessage("Payment initiated. Waiting for confirmation...")
-                }
             } else {
                 logError("Failed to send payment URI", null)
                 withContext(Dispatchers.Main) {
                     handlePaymentError("Failed to send payment request to customer device.")
                 }
+            }
+        } catch (e: android.nfc.TagLostException) {
+            logError("Tag lost during payment flow", e)
+            withContext(Dispatchers.Main) {
+                handlePaymentError("Device moved away. Please try again.")
+            }
+        } catch (e: SecurityException) {
+            logError("Security exception during payment flow", e)
+            withContext(Dispatchers.Main) {
+                handlePaymentError("NFC permission error. Please try again.")
             }
         } catch (e: Exception) {
             logError("Error in payment flow continuation", e)
@@ -342,6 +367,8 @@ class NFCReceiveViewModel(
     ) {
         monitoringJob?.cancel()
         
+        Log.d(TAG, "🔍 [MERCHANT] Starting payment monitoring. ChainId: $chainId, MerchantAddress: $merchantAddress, ExpectedAmount: $expectedAmountWei")
+        
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val blockchainService = BlockchainService(App.instance)
@@ -353,10 +380,60 @@ class NFCReceiveViewModel(
                     expectedTokenAddress = expectedTokenAddress
                 ) { transfer ->
                     viewModelScope.launch(Dispatchers.Main) {
-                        completePayment(transfer.hash)
+                        Log.d(TAG, "🔔 [MERCHANT] Incoming transfer detected! Hash: ${transfer.hash}, From: ${transfer.from}, To: ${transfer.to}, Value: ${transfer.value}")
                         
-                        kotlinx.coroutines.delay(3000)
-                        resetAfterSuccess()
+                        updateStatus(ReceivePaymentStatus.FOUND)
+                        
+                        viewModelScope.launch {
+                            delay(2000)
+                            updateStatus(ReceivePaymentStatus.WAITING_CONFIRMATION)
+                        }
+                        
+                        viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                val blockchainService = BlockchainService(App.instance)
+                                var verified = false
+                                var retries = 0
+                                val maxRetries = 10 // Wait up to 10 checks (30 seconds)
+                                
+                                while (!verified && retries < maxRetries) {
+                                    kotlinx.coroutines.delay(3000) // Check every 3 seconds (same as customer)
+                                    val status = blockchainService.getTransactionStatus(transfer.hash, chainId, minConfirmations = 1)
+                                    
+                                    when (status) {
+                                        BlockchainService.TransactionStatus.SUCCESS -> {
+                                            verified = true
+                                            viewModelScope.launch(Dispatchers.Main) {
+                                                completePayment(transfer.hash)
+                                            }
+                                        }
+                                        BlockchainService.TransactionStatus.FAILED -> {
+                                            verified = true
+                                            viewModelScope.launch(Dispatchers.Main) {
+                                                handlePaymentError("Transaction failed on blockchain")
+                                            }
+                                        }
+                                        BlockchainService.TransactionStatus.PENDING,
+                                        BlockchainService.TransactionStatus.UNKNOWN -> {
+                                            retries++
+                                            Log.d(TAG, "⏳ [MERCHANT] Waiting for confirmations... (attempt $retries/$maxRetries)")
+                                        }
+                                    }
+                                }
+                                
+                                if (!verified) {
+                                    Log.d(TAG, "⚠️ [MERCHANT] Status verification timeout, confirming based on transfer detection")
+                                    viewModelScope.launch(Dispatchers.Main) {
+                                        completePayment(transfer.hash)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                logError("Error verifying transaction status", e)
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    completePayment(transfer.hash)
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -393,6 +470,12 @@ class NFCReceiveViewModel(
             return@withContext response.size >= 2 && 
                    response[response.size - 2] == 0x90.toByte() && 
                    response[response.size - 1] == 0x00.toByte()
+        } catch (e: android.nfc.TagLostException) {
+            logError("Tag lost while sending payment URI", e)
+            return@withContext false
+        } catch (e: SecurityException) {
+            logError("Security exception while sending payment URI", e)
+            return@withContext false
         } catch (e: Exception) {
             logError("Error sending payment URI via IsoDep", e)
             return@withContext false
@@ -425,6 +508,20 @@ class NFCReceiveViewModel(
 }
 
 /**
+ * Payment status enum for NFC Receive (Merchant)
+ */
+enum class ReceivePaymentStatus {
+    WAITING_FOR_CUSTOMER,
+    CONNECTING,
+    CONNECTED,
+    SEARCHING,
+    FOUND,
+    WAITING_CONFIRMATION,
+    CONFIRMED,
+    FAILED
+}
+
+/**
  * UI state for NFC Receive screen
  */
 data class NFCReceiveUiState(
@@ -435,6 +532,6 @@ data class NFCReceiveUiState(
     val isProcessing: Boolean = false,
     val isPaymentConfirmed: Boolean = false,
     val transactionHash: String? = null,
-    val statusMessage: String = ""
+    val status: ReceivePaymentStatus? = null
 )
 

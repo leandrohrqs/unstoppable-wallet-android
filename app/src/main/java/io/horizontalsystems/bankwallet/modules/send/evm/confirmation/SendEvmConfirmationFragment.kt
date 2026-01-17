@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModelProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -17,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import io.horizontalsystems.bankwallet.R
-import io.horizontalsystems.bankwallet.modules.main.MainModule
-import io.horizontalsystems.bankwallet.modules.main.MainViewModel
 import io.horizontalsystems.bankwallet.core.AppLogger
 import io.horizontalsystems.bankwallet.core.BaseComposeFragment
 import io.horizontalsystems.bankwallet.core.slideFromBottom
@@ -26,6 +23,13 @@ import io.horizontalsystems.bankwallet.core.stats.StatEvent
 import io.horizontalsystems.bankwallet.core.stats.StatPage
 import io.horizontalsystems.bankwallet.core.stats.stat
 import io.horizontalsystems.bankwallet.modules.confirm.ConfirmTransactionScreen
+import android.content.Intent
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import io.horizontalsystems.bankwallet.core.App
+import io.horizontalsystems.bankwallet.core.toHexString
+import io.horizontalsystems.bankwallet.core.slideFromRight
+import io.horizontalsystems.bankwallet.modules.nfc.send.NFCSendViewModel
+import io.horizontalsystems.bankwallet.modules.nfc.status.NFCTransactionStatusFragment
 import io.horizontalsystems.bankwallet.modules.send.evm.SendEvmData
 import io.horizontalsystems.bankwallet.modules.send.evm.SendEvmModule
 import io.horizontalsystems.bankwallet.modules.sendevmtransaction.SendEvmTransactionView
@@ -117,65 +121,58 @@ private fun SendEvmConfirmationScreen(
 
                     coroutineScope.launch {
                         buttonEnabled = false
-                        HudHelper.showInProcessMessage(view, R.string.Send_Sending, SnackbarDuration.INDEFINITE)
+                        
+                        val isNFCPayment = input.sendEntryPointDestId == -1
+                        if (!isNFCPayment) {
+                            HudHelper.showInProcessMessage(view, R.string.Send_Sending, SnackbarDuration.INDEFINITE)
+                        }
 
                         try {
                             logger.info("sending tx")
-                            viewModel.send()
+                            val sendResult = viewModel.send()
                             logger.info("success")
                             stat(page = StatPage.SendConfirmation, event = StatEvent.Send)
 
-                            HudHelper.showSuccessMessage(view, R.string.Hud_Text_Done)
-                            delay(1200)
+                            var transactionHash: String? = null
+                            var chainId: Int? = null
 
-                            if (input.sendEntryPointDestId == -1) {
-                                logger.info("NFC payment completed, navigating to Transactions tab")
-                                
-                                val pop1 = navController.popBackStack()
-                                logger.info("First popBackStack result: $pop1")
-                                delay(150)
-                                
-                                val pop2 = navController.popBackStack()
-                                logger.info("Second popBackStack result: $pop2")
-                                
-                                delay(400)
-                                
-                                var retries = 5
-                                var success = false
-                                while (retries > 0 && !success) {
-                                    try {
-                                        logger.info("Attempting to access mainFragment (retries left: $retries)")
-                                        val mainBackStackEntry = navController.getBackStackEntry(R.id.mainFragment)
-                                        logger.info("Successfully retrieved mainFragment back stack entry")
-                                        
-                                        val mainViewModelProvider = ViewModelProvider(
-                                            mainBackStackEntry.viewModelStore,
-                                            MainModule.Factory()
-                                        )
-                                        val mainViewModel = mainViewModelProvider[MainViewModel::class.java]
-                                        logger.info("Successfully retrieved MainViewModel")
-                                        
-                                        mainViewModel.onSelect(MainModule.MainNavigation.Transactions)
-                                        logger.info("✅ Successfully navigated to Transactions tab")
-                                        success = true
-                                    } catch (e: IllegalArgumentException) {
-                                        val attempt = 6 - retries
-                                        logger.info("mainFragment not in back stack yet (attempt $attempt/5), retrying...")
-                                        retries--
-                                        if (retries > 0) {
-                                            delay(300)
-                                        } else {
-                                            logger.warning("Failed to access mainFragment after all retries: ${e.message}", e)
-                                        }
-                                    } catch (e: Exception) {
-                                        logger.warning("Failed to access MainViewModel: ${e.message}", e)
-                                        break
-                                    }
+                            if (isNFCPayment) {
+                                transactionHash = sendResult.fullTransaction.transaction.hash.toHexString()
+                                chainId = when (input.blockchainType) {
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Ethereum -> 1
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Optimism -> 10
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Polygon -> 137
+                                    io.horizontalsystems.marketkit.models.BlockchainType.ArbitrumOne -> 42161
+                                    io.horizontalsystems.marketkit.models.BlockchainType.Base -> 8453
+                                    else -> 1
                                 }
                                 
-                                if (!success) {
-                                    logger.warning("⚠️ Could not navigate to Transactions tab after NFC payment", Exception("Navigation failed"))
+                                val intent = Intent(NFCSendViewModel.ACTION_TRANSACTION_SENT).apply {
+                                    putExtra(NFCSendViewModel.EXTRA_TRANSACTION_HASH, transactionHash)
+                                    putExtra(NFCSendViewModel.EXTRA_CHAIN_ID, chainId)
                                 }
+                                LocalBroadcastManager.getInstance(view.context).sendBroadcast(intent)
+                                logger.info("Sent transaction hash broadcast: $transactionHash, chainId: $chainId")
+                            }
+
+                            if (!isNFCPayment) {
+                                HudHelper.showSuccessMessage(view, R.string.Hud_Text_Done)
+                                delay(1200)
+                            }
+
+                            if (isNFCPayment && transactionHash != null && chainId != null) {
+                                logger.info("NFC payment completed, navigating to transaction status screen")
+                                
+                                navController.popBackStack(R.id.sendXFragment, true)
+                                delay(300)
+                                
+                                navController.slideFromRight(
+                                    R.id.nfcTransactionStatusFragment,
+                                    NFCTransactionStatusFragment.Input(
+                                        transactionHash = transactionHash,
+                                        chainId = chainId
+                                    )
+                                )
                             } else {
                                 navController.popBackStack(input.sendEntryPointDestId, true)
                             }

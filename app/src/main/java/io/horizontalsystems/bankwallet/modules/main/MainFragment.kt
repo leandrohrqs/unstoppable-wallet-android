@@ -20,12 +20,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -210,9 +212,23 @@ private fun MainScreen(
             }
         }
         Column(modifier = Modifier.padding(it)) {
-            LaunchedEffect(key1 = selectedPage, block = {
-                pagerState.scrollToPage(selectedPage)
-            })
+            LaunchedEffect(Unit) {
+                var currentPage = viewModel.uiState.selectedTabIndex
+                while (true) {
+                    val newPage = viewModel.uiState.selectedTabIndex
+                    if (newPage != currentPage && newPage != pagerState.currentPage && newPage >= 0 && newPage < pagerState.pageCount) {
+                        pagerState.scrollToPage(newPage)
+                        currentPage = newPage
+                    }
+                    kotlinx.coroutines.delay(100)
+                }
+            }
+            
+            LaunchedEffect(selectedPage) {
+                if (selectedPage != pagerState.currentPage && selectedPage >= 0 && selectedPage < pagerState.pageCount) {
+                    pagerState.scrollToPage(selectedPage)
+                }
+            }
 
             HorizontalPager(
                 modifier = Modifier.weight(1f),

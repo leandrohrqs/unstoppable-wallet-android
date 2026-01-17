@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -62,7 +63,7 @@ fun NFCSendScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ComposeAppTheme.colors.tyler)
+            .background(ComposeAppTheme.colors.lawrence)
     ) {
         if (uiState.isActive) {
             NFCActiveOverlay(
@@ -174,7 +175,7 @@ private fun NFCActiveOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ComposeAppTheme.colors.tyler.copy(alpha = 0.95f)),
+            .background(ComposeAppTheme.colors.lawrence),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -237,4 +238,5 @@ private fun NFCActiveOverlay(
         }
     }
 }
+
 
