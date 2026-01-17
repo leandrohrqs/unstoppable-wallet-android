@@ -71,6 +71,16 @@ class NFCReceiveViewModel(
     }
 
     /**
+     * Remove the last digit from the current amount
+     */
+    fun removeLastDigit() {
+        if (uiState.isProcessing) return
+
+        val newAmountCents = uiState.amountCents / 10
+        updateAmount(newAmountCents)
+    }
+
+    /**
      * Start payment process and enable NFC reader mode
      */
     fun startPayment() {

@@ -114,6 +114,7 @@ fun NFCReceiveScreen(
                     formattedAmount = uiState.formattedAmount,
                     onDigitPressed = { digit -> viewModel.appendDigit(digit) },
                     onClearPressed = { viewModel.clearAmount() },
+                    onBackspacePressed = { viewModel.removeLastDigit() },
                     onChargePressed = { viewModel.startPayment() },
                     chargeEnabled = uiState.chargeEnabled
                 )
@@ -132,6 +133,7 @@ private fun NFCAmountInputContent(
     formattedAmount: String,
     onDigitPressed: (String) -> Unit,
     onClearPressed: () -> Unit,
+    onBackspacePressed: () -> Unit,
     onChargePressed: () -> Unit,
     chargeEnabled: Boolean
 ) {
@@ -185,6 +187,7 @@ private fun NFCAmountInputContent(
             NumericKeyboard(
                 onDigitClick = onDigitPressed,
                 onClearClick = onClearPressed,
+                onBackspaceClick = onBackspacePressed,
                 modifier = Modifier.weight(1f, fill = false)
             )
 
