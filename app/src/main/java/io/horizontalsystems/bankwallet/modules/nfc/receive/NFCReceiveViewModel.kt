@@ -47,6 +47,19 @@ class NFCReceiveViewModel(
 
     private val walletIntegrationHelper = WalletIntegrationHelper(accountManager, adapterManager, App.walletManager)
     private var monitoringJob: Job? = null
+    
+    init {
+        // Initialize with the correct currency format
+        updateAmount(0L)
+        
+        // Observe currency changes and update formatted amount
+        viewModelScope.launch {
+            currencyManager.baseCurrencyUpdatedFlow.collect {
+                // Re-format the current amount with the new currency
+                updateAmount(uiState.amountCents)
+            }
+        }
+    }
 
     /**
      * Append a digit to the current amount
@@ -500,13 +513,17 @@ class NFCReceiveViewModel(
     private fun ByteArray.toHex(): String = joinToString("") { "%02X".format(it) }
 
     private fun updateAmount(amountCents: Long) {
-        val amountInDollars = BigDecimal(amountCents).divide(BigDecimal(100))
-        val formatter = NumberFormat.getCurrencyInstance(Locale.US)
-        val formatted = formatter.format(amountInDollars)
+        val currency = currencyManager.baseCurrency
+        val amountInCurrency = BigDecimal(amountCents).divide(BigDecimal(100))
+        
+        val formatter = NumberFormat.getCurrencyInstance().apply {
+            this.currency = java.util.Currency.getInstance(currency.code)
+        }
+        val formatted = formatter.format(amountInCurrency)
 
         uiState = uiState.copy(
             amountCents = amountCents,
-            amount = amountInDollars,
+            amount = amountInCurrency,
             formattedAmount = formatted,
             chargeEnabled = amountCents >= MIN_AMOUNT_CENTS
         )

@@ -1711,4 +1711,6 @@
     <string name="NFC_SettingsSectionTitle">NFC</string>
     <string name="NFC_SettingsDescription">Habilitar Emulação de Cartão NFC</string>
     <string name="NFC_DisableInfo">Para desativar, vá em Configurações &gt; Configurações do Aplicativo</string>
+    <string name="NFC_Settings">Configurações</string>
+    <string name="NFC_SelectCurrency">Selecionar Moeda</string>
 </resources>

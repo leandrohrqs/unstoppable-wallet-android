@@ -893,6 +893,8 @@
     <string name="NFC_SettingsSectionTitle">NFC</string>
     <string name="NFC_SettingsDescription">Enable NFC Card Emulation</string>
     <string name="NFC_DisableInfo">To disable, go to Settings &gt; App Settings</string>
+    <string name="NFC_Settings">Settings</string>
+    <string name="NFC_SelectCurrency">Select Currency</string>
     <string name="Transactions_WaitForSync">Please wait for the sync to finish.</string>
     <string name="Transactions_Pending">Pending</string>
     <string name="Transactions_Receive">Received</string>

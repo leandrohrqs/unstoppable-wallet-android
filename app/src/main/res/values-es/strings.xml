@@ -1719,4 +1719,6 @@
     <string name="NFC_SettingsSectionTitle">NFC</string>
     <string name="NFC_SettingsDescription">Habilitar Emulación de Tarjeta NFC</string>
     <string name="NFC_DisableInfo">Para desactivar, ve a Configuración &gt; Configuración de la App</string>
+    <string name="NFC_Settings">Configuración</string>
+    <string name="NFC_SelectCurrency">Seleccionar Moneda</string>
 </resources>
