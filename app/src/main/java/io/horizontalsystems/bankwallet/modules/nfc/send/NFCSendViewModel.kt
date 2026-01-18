@@ -67,7 +67,7 @@ class NFCSendViewModel(
                     val transactionHash = intent.getStringExtra(EXTRA_TRANSACTION_HASH)
                     val chainId = intent.getIntExtra(EXTRA_CHAIN_ID, -1)
                     if (transactionHash != null && chainId != -1) {
-                        startTransactionMonitoring(transactionHash, chainId)
+                        onTransactionSent(transactionHash, chainId)
                     }
                 }
             }
@@ -161,6 +161,11 @@ class NFCSendViewModel(
      * Parses the URI and navigates to Send screen with pre-filled data.
      */
     fun handlePaymentUri(paymentUri: String) {
+        // Update status to show device was connected
+        uiState = uiState.copy(
+            paymentStatus = SendPaymentStatus.CONNECTED
+        )
+        
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val paymentRequest = EIP681Parser.parse(paymentUri)
@@ -168,7 +173,8 @@ class NFCSendViewModel(
                     logError("Failed to parse payment URI", null)
                     withContext(Dispatchers.Main) {
                         uiState = uiState.copy(
-                            statusMessage = "Invalid payment request"
+                            statusMessage = "Invalid payment request",
+                            paymentStatus = SendPaymentStatus.FAILED
                         )
                     }
                     return@launch
@@ -179,7 +185,8 @@ class NFCSendViewModel(
                     logError("No wallet found for token", null)
                     withContext(Dispatchers.Main) {
                         uiState = uiState.copy(
-                            statusMessage = "Token ${paymentRequest.token.symbol} not available in your wallet"
+                            statusMessage = "Token ${paymentRequest.token.symbol} not available in your wallet",
+                            paymentStatus = SendPaymentStatus.FAILED
                         )
                     }
                     return@launch
@@ -191,7 +198,8 @@ class NFCSendViewModel(
                             wallet = wallet,
                             recipientAddress = paymentRequest.recipient,
                             amount = paymentRequest.amount
-                        )
+                        ),
+                        paymentStatus = SendPaymentStatus.CONNECTED
                     )
                 }
 
@@ -199,11 +207,32 @@ class NFCSendViewModel(
                 logError("Error handling payment URI", e)
                 withContext(Dispatchers.Main) {
                     uiState = uiState.copy(
-                        statusMessage = "Error processing payment request: ${e.message}"
+                        statusMessage = "Error processing payment request: ${e.message}",
+                        paymentStatus = SendPaymentStatus.FAILED
                     )
                 }
             }
         }
+    }
+    
+    /**
+     * Called when transaction is sent - update status and start monitoring
+     */
+    fun onTransactionSent(transactionHash: String, chainId: Int) {
+        uiState = uiState.copy(
+            paymentStatus = SendPaymentStatus.SENT
+        )
+        
+        viewModelScope.launch {
+            delay(1500)
+            if (uiState.paymentStatus == SendPaymentStatus.SENT) {
+                uiState = uiState.copy(
+                    paymentStatus = SendPaymentStatus.SEARCHING
+                )
+            }
+        }
+        
+        startTransactionMonitoring(transactionHash, chainId)
     }
 
     /**
@@ -272,12 +301,14 @@ class NFCSendViewModel(
             isWaitingForConfirmation = true,
             transactionHash = transactionHash,
             chainId = chainId,
-            isPaymentConfirmed = false
+            isPaymentConfirmed = false,
+            paymentStatus = SendPaymentStatus.SEARCHING
         )
         
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val blockchainService = BlockchainService(App.instance)
+                var foundStatusShown = false
                 
                 while (true) {
                     delay(3000)
@@ -286,31 +317,52 @@ class NFCSendViewModel(
                     
                     when (status) {
                         BlockchainService.TransactionStatus.SUCCESS -> {
-                            viewModelScope.launch(Dispatchers.Main) {
+                            if (!foundStatusShown) {
+                                withContext(Dispatchers.Main) {
+                                    uiState = uiState.copy(paymentStatus = SendPaymentStatus.FOUND)
+                                }
+                                delay(500)
+                            }
+                            withContext(Dispatchers.Main) {
                                 completePayment(transactionHash)
                             }
                             break
                         }
                         BlockchainService.TransactionStatus.FAILED -> {
-                            viewModelScope.launch(Dispatchers.Main) {
+                            withContext(Dispatchers.Main) {
                                 uiState = uiState.copy(
                                     isWaitingForConfirmation = false,
-                                    statusMessage = "Transaction failed"
+                                    statusMessage = "Transaction failed",
+                                    paymentStatus = SendPaymentStatus.FAILED
                                 )
                             }
                             break
                         }
                         BlockchainService.TransactionStatus.PENDING,
                         BlockchainService.TransactionStatus.UNKNOWN -> {
+                            withContext(Dispatchers.Main) {
+                                if (!foundStatusShown) {
+                                    // Transaction found but not yet confirmed
+                                    uiState = uiState.copy(paymentStatus = SendPaymentStatus.FOUND)
+                                    foundStatusShown = true
+                                }
+                            }
+                            if (foundStatusShown) {
+                                delay(1000)
+                                withContext(Dispatchers.Main) {
+                                    uiState = uiState.copy(paymentStatus = SendPaymentStatus.WAITING_CONFIRMATION)
+                                }
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
                 logError("Error monitoring transaction", e)
-                viewModelScope.launch(Dispatchers.Main) {
+                withContext(Dispatchers.Main) {
                     uiState = uiState.copy(
                         isWaitingForConfirmation = false,
-                        statusMessage = "Error monitoring transaction"
+                        statusMessage = "Error monitoring transaction",
+                        paymentStatus = SendPaymentStatus.FAILED
                     )
                 }
             }
@@ -325,7 +377,8 @@ class NFCSendViewModel(
         uiState = uiState.copy(
             isWaitingForConfirmation = false,
             isPaymentConfirmed = true,
-            transactionHash = transactionHash
+            transactionHash = transactionHash,
+            paymentStatus = SendPaymentStatus.CONFIRMED
         )
     }
     
@@ -337,7 +390,8 @@ class NFCSendViewModel(
             isWaitingForConfirmation = false,
             isPaymentConfirmed = false,
             transactionHash = null,
-            chainId = null
+            chainId = null,
+            paymentStatus = null
         )
         monitoringJob?.cancel()
     }
@@ -345,6 +399,20 @@ class NFCSendViewModel(
     private fun logError(message: String, throwable: Throwable?) {
         Log.e(TAG, message, throwable)
     }
+}
+
+/**
+ * Payment status for NFC Send (Customer)
+ */
+enum class SendPaymentStatus {
+    WAITING,
+    CONNECTED,
+    SENT,
+    SEARCHING,
+    FOUND,
+    WAITING_CONFIRMATION,
+    CONFIRMED,
+    FAILED
 }
 
 /**
@@ -361,7 +429,8 @@ data class NFCSendUiState(
     val chainId: Int? = null,
     val nfcSystemEnabled: Boolean = false,
     val nfcAppEnabled: Boolean = false,
-    val nfcAvailable: Boolean = false
+    val nfcAvailable: Boolean = false,
+    val paymentStatus: SendPaymentStatus? = null
 )
 
 /**

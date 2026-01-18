@@ -1,8 +1,15 @@
 package io.horizontalsystems.bankwallet.modules.nfc.send
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -19,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -138,7 +146,9 @@ fun NFCSendScreen(
             }
             uiState.isActive -> {
                 NFCActiveScreen(
-                    statusMessage = uiState.statusMessage
+                    statusMessage = uiState.statusMessage,
+                    paymentStatus = uiState.paymentStatus,
+                    onResetStatus = { viewModel.resetTransactionStatus() }
                 )
             }
         }
@@ -354,10 +364,13 @@ private fun NFCPermissionRequestScreen(
 
 /**
  * Screen when NFC is active (no disable button)
+ * Shows payment status dynamically when payment is in progress
  */
 @Composable
 private fun NFCActiveScreen(
-    statusMessage: String
+    statusMessage: String,
+    paymentStatus: io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus?,
+    onResetStatus: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -369,56 +382,197 @@ private fun NFCActiveScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(32.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .background(
-                        ComposeAppTheme.colors.remus.copy(alpha = 0.2f),
-                        RoundedCornerShape(60.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
+            // Show status icon and text if payment is in progress
+            if (paymentStatus != null && paymentStatus != io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING) {
+                PaymentStatusIcon(status = paymentStatus)
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                PaymentStatusText(status = paymentStatus)
+                
+                // Auto-reset after showing confirmed status
+                if (paymentStatus == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED) {
+                    LaunchedEffect(paymentStatus) {
+                        kotlinx.coroutines.delay(3000)
+                        onResetStatus()
+                    }
+                }
+            } else {
+                // Default ready state
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .background(
+                            ComposeAppTheme.colors.remus.copy(alpha = 0.2f),
+                            RoundedCornerShape(60.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.NFC_Title),
+                        style = ComposeAppTheme.typography.title1,
+                        color = ComposeAppTheme.colors.remus
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
                 Text(
-                    text = stringResource(R.string.NFC_Title),
-                    style = ComposeAppTheme.typography.title1,
-                    color = ComposeAppTheme.colors.remus
+                    text = stringResource(R.string.NFC_ReadyToSend),
+                    style = ComposeAppTheme.typography.headline1,
+                    color = ComposeAppTheme.colors.remus,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = statusMessage.ifEmpty { stringResource(R.string.NFC_HoldDevice) },
+                    style = ComposeAppTheme.typography.subhead,
+                    color = ComposeAppTheme.colors.grey,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = stringResource(R.string.NFC_CardEmulationActive),
+                    style = ComposeAppTheme.typography.micro,
+                    color = ComposeAppTheme.colors.grey,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // Only show disable info when not in active payment status
+            if (paymentStatus == null || paymentStatus == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = stringResource(R.string.NFC_ReadyToSend),
-                style = ComposeAppTheme.typography.headline1,
-                color = ComposeAppTheme.colors.remus,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = statusMessage.ifEmpty { stringResource(R.string.NFC_HoldDevice) },
-                style = ComposeAppTheme.typography.subhead,
-                color = ComposeAppTheme.colors.grey,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = stringResource(R.string.NFC_CardEmulationActive),
-                style = ComposeAppTheme.typography.micro,
-                color = ComposeAppTheme.colors.grey,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            InfoText(
-                text = stringResource(R.string.NFC_DisableInfo)
-            )
+                InfoText(
+                    text = stringResource(R.string.NFC_DisableInfo)
+                )
+            }
         }
+    }
+}
+
+/**
+ * Display icon based on payment status
+ */
+@Composable
+private fun PaymentStatusIcon(status: io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus) {
+    val iconRes = when (status) {
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONNECTED -> R.drawable.ic_nfc_24
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SENT -> R.drawable.arrow_m_up_24
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SEARCHING -> R.drawable.binocular_24
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FOUND -> R.drawable.binocular_24
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING_CONFIRMATION -> R.drawable.binocular_24
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED -> R.drawable.icon_20_check_1
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FAILED -> R.drawable.icon_warning_2_20
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING -> R.drawable.ic_nfc_24
+    }
+    
+    val iconColor = when (status) {
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONNECTED -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SENT -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SEARCHING -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FOUND -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING_CONFIRMATION -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED -> ComposeAppTheme.colors.greenD
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FAILED -> ComposeAppTheme.colors.lucian
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING -> ComposeAppTheme.colors.remus
+    }
+    
+    val scale by animateFloatAsState(
+        targetValue = if (status == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED) 1.2f else 1f,
+        animationSpec = tween(durationMillis = 300)
+    )
+    
+    Box(
+        modifier = Modifier
+            .size(120.dp)
+            .background(
+                iconColor.copy(alpha = 0.1f),
+                RoundedCornerShape(60.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier
+                .size(64.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+            tint = iconColor
+        )
+    }
+}
+
+/**
+ * Display status text with animated dots
+ */
+@Composable
+private fun PaymentStatusText(status: io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus) {
+    val baseText = when (status) {
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONNECTED -> stringResource(R.string.NFC_ReceiveStatus_Connected)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SENT -> stringResource(R.string.NFC_TransactionStatus_Sent)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SEARCHING -> stringResource(R.string.NFC_TransactionStatus_Searching)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FOUND -> stringResource(R.string.NFC_TransactionStatus_Found)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING_CONFIRMATION -> stringResource(R.string.NFC_TransactionStatus_Waiting)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED -> stringResource(R.string.NFC_TransactionStatus_Confirmed)
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FAILED -> "Transaction failed"
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING -> stringResource(R.string.NFC_ReadyToSend)
+    }
+    
+    val shouldShowDots = status == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SEARCHING || 
+                         status == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING_CONFIRMATION
+    
+    var dots by remember { mutableStateOf("") }
+    
+    LaunchedEffect(status) {
+        if (shouldShowDots) {
+            while (true) {
+                dots = ""
+                kotlinx.coroutines.delay(500)
+                dots = "."
+                kotlinx.coroutines.delay(500)
+                dots = ".."
+                kotlinx.coroutines.delay(500)
+                dots = "..."
+                kotlinx.coroutines.delay(500)
+            }
+        } else {
+            dots = ""
+        }
+    }
+    
+    val textColor = when (status) {
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONNECTED -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SENT -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.SEARCHING -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FOUND -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING_CONFIRMATION -> ComposeAppTheme.colors.jacob
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED -> ComposeAppTheme.colors.greenD
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.FAILED -> ComposeAppTheme.colors.lucian
+        io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.WAITING -> ComposeAppTheme.colors.remus
+    }
+    
+    AnimatedContent(
+        targetState = "$baseText$dots",
+        transitionSpec = {
+            fadeIn() togetherWith fadeOut()
+        },
+        label = "status_text"
+    ) { text ->
+        Text(
+            text = text,
+            style = ComposeAppTheme.typography.headline1,
+            color = textColor,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
