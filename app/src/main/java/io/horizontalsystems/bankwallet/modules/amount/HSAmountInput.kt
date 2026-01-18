@@ -50,6 +50,7 @@ import java.math.BigDecimal
 
 /**
  * @param amountUnique used special class [AmountUnique] to be able to set the same amount again. It won't work with BigDecimal
+ * @param enabled when false, the input field is read-only (used for NFC payments where amount is set by merchant)
  */
 @Composable
 fun HSAmountInput(
@@ -64,7 +65,8 @@ fun HSAmountInput(
     onValueChange: (BigDecimal?) -> Unit,
     inputType: AmountInputType,
     rate: CurrencyValue?,
-    amountUnique: AmountUnique? = null
+    amountUnique: AmountUnique? = null,
+    enabled: Boolean = true
 ) {
     val viewModel = viewModel<AmountInputViewModel2>(
         factory = AmountInputModule.Factory(
@@ -151,7 +153,10 @@ fun HSAmountInput(
                         ),
                     value = textState,
                     singleLine = true,
+                    enabled = enabled,
+                    readOnly = !enabled,
                     onValueChange = { textFieldValue ->
+                        if (!enabled) return@BasicTextField
                         val text = textFieldValue.text
                         if (viewModel.isValid(text)) {
                             textState = textFieldValue
@@ -192,30 +197,33 @@ fun HSAmountInput(
                     }
                 )
 
-                if (textState.text.isNotEmpty()) {
-                    ButtonSecondaryCircle(
-                        modifier = Modifier.padding(start = 8.dp, end = 16.dp),
-                        icon = R.drawable.ic_delete_20,
-                        onClick = {
-                            textState = textState.copy(text = "")
+                // Only show delete/max buttons when editing is enabled
+                if (enabled) {
+                    if (textState.text.isNotEmpty()) {
+                        ButtonSecondaryCircle(
+                            modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+                            icon = R.drawable.ic_delete_20,
+                            onClick = {
+                                textState = textState.copy(text = "")
 
-                            viewModel.onEnterAmount(textState.text)
-                            onValueChange.invoke(viewModel.coinAmount)
-                        }
-                    )
-                } else if (viewModel.isMaxEnabled) {
-                    ButtonSecondaryDefault(
-                        modifier = Modifier.padding(start = 8.dp, end = 16.dp),
-                        title = stringResource(R.string.Send_Button_Max),
-                        onClick = {
-                            viewModel.onClickMax()
-                            val text = viewModel.getEnterAmount()
-                            textState =
-                                textState.copy(text = text, selection = TextRange(text.length))
+                                viewModel.onEnterAmount(textState.text)
+                                onValueChange.invoke(viewModel.coinAmount)
+                            }
+                        )
+                    } else if (viewModel.isMaxEnabled) {
+                        ButtonSecondaryDefault(
+                            modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+                            title = stringResource(R.string.Send_Button_Max),
+                            onClick = {
+                                viewModel.onClickMax()
+                                val text = viewModel.getEnterAmount()
+                                textState =
+                                    textState.copy(text = text, selection = TextRange(text.length))
 
-                            onValueChange.invoke(viewModel.coinAmount)
-                        }
-                    )
+                                onValueChange.invoke(viewModel.coinAmount)
+                            }
+                        )
+                    }
                 }
             }
 

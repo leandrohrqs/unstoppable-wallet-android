@@ -46,6 +46,7 @@ fun SendEvmScreen(
     hideAddress: Boolean,
     riskyAddress: Boolean,
     sendEntryPointDestId: Int,
+    amountLocked: Boolean = false,
 ) {
     val viewModel = viewModel<SendEvmViewModel>(
         factory = SendEvmModule.Factory(wallet, address, hideAddress)
@@ -102,7 +103,8 @@ fun SendEvmScreen(
                 },
                 inputType = amountInputType,
                 rate = viewModel.coinRate,
-                amountUnique = amountUnique
+                amountUnique = amountUnique,
+                enabled = !amountLocked
             )
 
             VSpacer(8.dp)

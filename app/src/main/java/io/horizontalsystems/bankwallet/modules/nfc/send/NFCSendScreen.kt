@@ -94,7 +94,8 @@ fun NFCSendScreen(
                         sendEntryPointDestId = -1,
                         address = Address(event.recipientAddress),
                         amount = event.amount,
-                        hideAddress = false
+                        hideAddress = false,
+                        amountLocked = true
                     )
                 )
                 viewModel.clearNavigationEvent()
