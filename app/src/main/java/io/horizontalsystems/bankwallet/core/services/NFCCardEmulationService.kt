@@ -53,6 +53,12 @@ class NFCCardEmulationService : HostApduService() {
             logError("NFC payment rejected - NFC not enabled in app settings", null)
             return UNKNOWN
         }
+        
+        // Check if NFC Send screen is active - only process commands when on the send screen
+        if (!io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager.isSendScreenActive) {
+            Log.d(TAG, "📵 [CUSTOMER] NFC command ignored - Send screen not active")
+            return UNKNOWN
+        }
 
         sendBroadcast("NFC reader connected - processing request")
 

@@ -34,6 +34,10 @@ object NFCConfigManager {
     private val _paymentActiveFlow = MutableStateFlow(false)
     val paymentActiveFlow: StateFlow<Boolean> = _paymentActiveFlow.asStateFlow()
     
+    // Track if the NFC Send screen is currently active (to control HCE service)
+    private val _isSendScreenActive = MutableStateFlow(false)
+    val isSendScreenActiveFlow: StateFlow<Boolean> = _isSendScreenActive.asStateFlow()
+    
     /**
      * Initialize the config manager with context.
      * Safe to call multiple times - will only initialize once.
@@ -81,6 +85,16 @@ object NFCConfigManager {
         set(value) {
             preferences?.edit()?.putBoolean(KEY_PAYMENT_ACTIVE, value)?.apply()
             _paymentActiveFlow.update { value }
+        }
+    
+    /**
+     * Whether the NFC Send screen is currently active.
+     * HCE service should only process commands when this is true.
+     */
+    var isSendScreenActive: Boolean
+        get() = _isSendScreenActive.value
+        set(value) {
+            _isSendScreenActive.update { value }
         }
     
     /**

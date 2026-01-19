@@ -199,6 +199,17 @@ class NFCReceiveViewModel(
             )
         }
     }
+    
+    /**
+     * Silently reset state without showing error.
+     * Used when the customer app is not ready (e.g., not on Send screen).
+     * Keeps the status as WAITING_FOR_CUSTOMER so the merchant stays on the waiting screen.
+     */
+    private fun silentReset() {
+        Log.d(TAG, "Silent reset - customer not ready, keeping WAITING_FOR_CUSTOMER status")
+        // Don't change the status - keep waiting for customer
+        // Only reset isProcessing flag if it was set
+    }
 
     /**
      * Handle discovered NFC tag and process payment
@@ -209,10 +220,9 @@ class NFCReceiveViewModel(
             var ndef: Ndef? = null
             
             try {
-                withContext(Dispatchers.Main) {
-                    updateStatus(ReceivePaymentStatus.CONNECTING)
-                }
-
+                // Don't show CONNECTING status yet - wait until AID is successfully selected
+                // This prevents showing status changes when customer is not on Send screen
+                
                 when {
                     tag.techList.contains(IsoDep::class.java.name) -> {
                         isoDep = IsoDep.get(tag)!!
@@ -270,6 +280,15 @@ class NFCReceiveViewModel(
             var response = isoDep.transceive(selectAID)
 
             if (response.size >= 2 && response[response.size - 2] == 0x90.toByte() && response[response.size - 1] == 0x00.toByte()) {
+                // AID selected successfully - customer is on Send screen and ready
+                // Now we can show status updates
+                withContext(Dispatchers.Main) {
+                    updateStatus(ReceivePaymentStatus.CONNECTING)
+                }
+                
+                // Brief delay to show connecting status
+                delay(100)
+                
                 withContext(Dispatchers.Main) {
                     updateStatus(ReceivePaymentStatus.CONNECTED)
                 }
@@ -320,9 +339,11 @@ class NFCReceiveViewModel(
                     }
                 }
             } else {
-                logError("Failed to select AID", null)
+                // AID selection failed - this usually means the customer app is not on the Send screen
+                // or doesn't have the wallet app installed. Don't show error, just reset silently.
+                Log.d(TAG, "AID selection failed - customer may not be on Send screen")
                 withContext(Dispatchers.Main) {
-                    handlePaymentError("Failed to connect to wallet app. Ensure it's active.")
+                    silentReset()
                 }
             }
         } catch (e: android.nfc.TagLostException) {

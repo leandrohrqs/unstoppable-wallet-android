@@ -75,14 +75,25 @@ fun NFCSendScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.checkNFCStatus()
-                // Reset state if user returned from payment flow
-                viewModel.resetToWaitingIfNeeded()
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    // Activate NFC HCE service when entering the screen
+                    io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager.isSendScreenActive = true
+                    viewModel.checkNFCStatus()
+                    // Reset state if user returned from payment flow
+                    viewModel.resetToWaitingIfNeeded()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    // Deactivate NFC HCE service when leaving the screen
+                    io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager.isSendScreenActive = false
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            // Ensure HCE is deactivated when screen is disposed
+            io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager.isSendScreenActive = false
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
@@ -408,9 +419,17 @@ private fun NFCActiveScreen(
                 
                 PaymentStatusText(status = paymentStatus)
                 
-                // Auto-reset after showing confirmed status
+                // Play success sound and auto-reset after showing confirmed status
                 if (paymentStatus == io.horizontalsystems.bankwallet.modules.nfc.send.SendPaymentStatus.CONFIRMED) {
+                    val context = LocalContext.current
                     LaunchedEffect(paymentStatus) {
+                        try {
+                            val mediaPlayer = android.media.MediaPlayer.create(context, R.raw.nfctransfercomplete)
+                            mediaPlayer?.setOnCompletionListener { it.release() }
+                            mediaPlayer?.start()
+                        } catch (e: Exception) {
+                            // Error playing sound - ignore silently
+                        }
                         kotlinx.coroutines.delay(3000)
                         onResetStatus()
                     }
