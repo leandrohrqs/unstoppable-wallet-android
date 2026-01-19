@@ -46,6 +46,7 @@ fun SendEvmScreen(
     hideAddress: Boolean,
     riskyAddress: Boolean,
     sendEntryPointDestId: Int,
+    amountLocked: Boolean = false,
 ) {
     val viewModel = viewModel<SendEvmViewModel>(
         factory = SendEvmModule.Factory(wallet, address, hideAddress)
@@ -56,6 +57,10 @@ fun SendEvmScreen(
     val amountCaution = uiState.amountCaution
     val proceedEnabled = uiState.canBeSend
     val amountInputType = amountInputModeViewModel.inputType
+    val senderAddress = uiState.senderAddress
+    
+    // Check if this is an NFC payment (sendEntryPointDestId == -1)
+    val isNFCPayment = sendEntryPointDestId == -1
 
     val paymentAddressViewModel = viewModel<AddressParserViewModel>(
         factory = AddressParserModule.Factory(wallet.token, amount)
@@ -75,14 +80,25 @@ fun SendEvmScreen(
             title = title,
             onBack = { navController.popBackStack() }
         ) {
+            // Show "From" address for NFC payments
+            if (isNFCPayment && senderAddress != null) {
+                HSAddressCell(
+                    title = stringResource(R.string.TransactionInfo_From),
+                    value = senderAddress,
+                    showArrow = false,
+                    onClick = null
+                )
+                VSpacer(12.dp)
+            }
+            
             if (uiState.showAddressInput) {
                 HSAddressCell(
                     title = stringResource(R.string.Send_Confirmation_To),
                     value = uiState.address.hex,
                     riskyAddress = riskyAddress,
-                ) {
-                    navController.popBackStack()
-                }
+                    showArrow = !isNFCPayment, // Hide arrow for NFC payments
+                    onClick = if (isNFCPayment) null else { { navController.popBackStack() } }
+                )
                 VSpacer(16.dp)
             }
 
@@ -102,7 +118,8 @@ fun SendEvmScreen(
                 },
                 inputType = amountInputType,
                 rate = viewModel.coinRate,
-                amountUnique = amountUnique
+                amountUnique = amountUnique,
+                enabled = !amountLocked
             )
 
             VSpacer(8.dp)

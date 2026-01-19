@@ -78,10 +78,10 @@ fun SendConfirmationScreen(
     sendEntryPointDestId: Int,
     title: String? = null
 ) {
-    val closeUntilDestId = if (sendEntryPointDestId == 0) {
-        R.id.sendXFragment
-    } else {
-        sendEntryPointDestId
+    val closeUntilDestId = when {
+        sendEntryPointDestId == -1 -> R.id.nfcPaymentFragment // NFC payment - return to NFC screen
+        sendEntryPointDestId == 0 -> R.id.sendXFragment
+        else -> sendEntryPointDestId
     }
     val view = LocalView.current
     when (sendResult) {

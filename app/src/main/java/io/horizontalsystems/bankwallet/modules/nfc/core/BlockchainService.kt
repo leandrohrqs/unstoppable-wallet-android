@@ -26,6 +26,7 @@ class BlockchainService(private val context: Context) {
     
     init {
         ConfigManager.initialize(context)
+        NFCConfigManager.initialize(context)
     }
     
     private val alchemyApiKey: String = ConfigManager.getAlchemyApiKey()

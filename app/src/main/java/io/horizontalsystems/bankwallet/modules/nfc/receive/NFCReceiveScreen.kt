@@ -58,7 +58,7 @@ fun NFCReceiveScreen(
                         viewModel.handleNFCTag(tag)
                     }
                 },
-                NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+                NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
                 Bundle().apply {
                     putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250)
                 }
@@ -103,6 +103,19 @@ fun NFCReceiveScreen(
                 )
             }
             uiState.isProcessing && uiState.status != null -> {
+                // Play sound when NFC connection is established
+                LaunchedEffect(uiState.status) {
+                    if (uiState.status == ReceivePaymentStatus.CONNECTED) {
+                        try {
+                            val mediaPlayer = MediaPlayer.create(context, R.raw.nfctransferinitiated)
+                            mediaPlayer?.setOnCompletionListener { it.release() }
+                            mediaPlayer?.start()
+                        } catch (e: Exception) {
+                            // Error playing sound - ignore silently
+                        }
+                    }
+                }
+                
                 NFCReceiveStatusScreen(
                     status = uiState.status!!,
                     onCancel = { viewModel.cancelPayment() }
@@ -114,6 +127,7 @@ fun NFCReceiveScreen(
                     formattedAmount = uiState.formattedAmount,
                     onDigitPressed = { digit -> viewModel.appendDigit(digit) },
                     onClearPressed = { viewModel.clearAmount() },
+                    onBackspacePressed = { viewModel.removeLastDigit() },
                     onChargePressed = { viewModel.startPayment() },
                     chargeEnabled = uiState.chargeEnabled
                 )
@@ -132,6 +146,7 @@ private fun NFCAmountInputContent(
     formattedAmount: String,
     onDigitPressed: (String) -> Unit,
     onClearPressed: () -> Unit,
+    onBackspacePressed: () -> Unit,
     onChargePressed: () -> Unit,
     chargeEnabled: Boolean
 ) {
@@ -185,6 +200,7 @@ private fun NFCAmountInputContent(
             NumericKeyboard(
                 onDigitClick = onDigitPressed,
                 onClearClick = onClearPressed,
+                onBackspaceClick = onBackspacePressed,
                 modifier = Modifier.weight(1f, fill = false)
             )
 
