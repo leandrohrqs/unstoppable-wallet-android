@@ -441,14 +441,23 @@ class NFCSendViewModel(
 
     /**
      * Find wallet matching the token address and blockchain type.
+     * Uses the sender account configured in NFCConfigManager, falling back to active account.
      * For native tokens (address = "native" or 0x000...), matches by blockchain type.
      * For ERC-20 tokens, matches by contract address.
      */
     private suspend fun findWalletForToken(tokenAddress: String, blockchainType: io.horizontalsystems.marketkit.models.BlockchainType): Wallet? {
         return withContext(Dispatchers.IO) {
             try {
-                val activeAccount = accountManager.activeAccount ?: return@withContext null
-                val wallets = App.walletManager.activeWallets
+                // Use sender account from NFC config, fallback to active account
+                val senderAccountId = NFCConfigManager.getSenderAccountOrDefault()
+                val senderAccount = senderAccountId?.let { accountManager.account(it) } 
+                    ?: accountManager.activeAccount 
+                    ?: return@withContext null
+                
+                // Get wallets for the sender account specifically
+                val wallets = App.walletManager.activeWallets.filter { it.account.id == senderAccount.id }
+                
+                Log.d(TAG, "Finding wallet for token $tokenAddress on $blockchainType in account ${senderAccount.name} (${wallets.size} wallets)")
 
                 val isNativeToken = tokenAddress == "native" ||
                         tokenAddress == "0x0000000000000000000000000000000000000000" ||
@@ -462,6 +471,7 @@ class NFCSendViewModel(
                          wallet.token.type is TokenType.Derived ||
                          wallet.token.type is TokenType.AddressTyped)
                     }
+                    Log.d(TAG, "Native token wallet found: ${wallet?.token?.coin?.code}")
                     return@withContext wallet
                 } else {
                     // For contract-based tokens, match by address
@@ -469,6 +479,7 @@ class NFCSendViewModel(
                         wallet.token.blockchainType == blockchainType &&
                         (wallet.token.type as? TokenType.Eip20)?.address?.equals(tokenAddress, ignoreCase = true) == true
                     }
+                    Log.d(TAG, "ERC-20 token wallet found: ${wallet?.token?.coin?.code}")
                     return@withContext wallet
                 }
             } catch (e: Exception) {
