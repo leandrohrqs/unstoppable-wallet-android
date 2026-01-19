@@ -10,4 +10,5 @@ data class SendUiState(
     val canBeSend: Boolean,
     val showAddressInput: Boolean,
     val address: Address,
+    val senderAddress: String? = null,
 )

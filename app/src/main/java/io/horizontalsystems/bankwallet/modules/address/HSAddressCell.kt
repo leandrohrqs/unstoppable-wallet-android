@@ -22,8 +22,9 @@ import io.horizontalsystems.bankwallet.ui.compose.components.subhead2_grey
 fun HSAddressCell(
     title: String,
     value: String,
-    riskyAddress: Boolean,
-    onClick: () -> Unit
+    riskyAddress: Boolean = false,
+    showArrow: Boolean = true,
+    onClick: (() -> Unit)? = null
 ) {
     val borderColor = if (riskyAddress) {
         ComposeAppTheme.colors.red50
@@ -58,12 +59,14 @@ fun HSAddressCell(
                     )
                 }
 
-                HSpacer(16.dp)
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_down_arrow_20),
-                    contentDescription = null,
-                    tint = ComposeAppTheme.colors.grey
-                )
+                if (showArrow) {
+                    HSpacer(16.dp)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_down_arrow_20),
+                        contentDescription = null,
+                        tint = ComposeAppTheme.colors.grey
+                    )
+                }
             }
         }
     )
