@@ -57,7 +57,11 @@ class NFCPaymentFragment : BaseFragment() {
                         fromCurrency = merchantCurrency,
                         toCurrency = customerCurrency.code
                     )
-                    displayAmount = convertedAmount?.setScale(2, RoundingMode.HALF_UP)?.toPlainString() ?: input.fiatAmount
+                    
+                    android.util.Log.d("NFCPaymentFragment", "Currency conversion: $merchantAmount $merchantCurrency -> $convertedAmount ${customerCurrency.code}")
+                    
+                    // Use CEILING to always round up - ensures customer never pays less than required
+                    displayAmount = convertedAmount?.setScale(2, RoundingMode.CEILING)?.toPlainString() ?: input.fiatAmount
                     displayCurrency = if (convertedAmount != null) customerCurrency.code else merchantCurrency
                 }
 
@@ -100,31 +104,47 @@ class NFCPaymentFragment : BaseFragment() {
     }
     
     /**
-     * Convert amount from one fiat currency to another using crypto as intermediate.
-     * Uses USD as the intermediate currency for conversion.
+     * Convert amount from one fiat currency to another using stablecoin rates.
+     * Uses USDT as reference since it's pegged to USD and provides accurate fiat conversion.
      */
     private fun convertCurrency(amount: BigDecimal, fromCurrency: String, toCurrency: String): BigDecimal? {
         return try {
             val marketKit = App.marketKit
             
-            // Use a common crypto (BTC) as intermediate for fiat-to-fiat conversion
-            val btcUid = "bitcoin"
+            // Use USDT (stablecoin pegged to USD) for more accurate fiat conversion
+            val usdtUid = "tether"
             
-            // Get BTC price in source currency
+            // Get USDT price in source currency (e.g., USDT in BRL = ~5.37)
+            val usdtPriceFrom = marketKit.coinPrice(usdtUid, fromCurrency)?.value
+            // Get USDT price in target currency (e.g., USDT in USD = ~1.00)
+            val usdtPriceTo = marketKit.coinPrice(usdtUid, toCurrency)?.value
+            
+            android.util.Log.d("NFCPaymentFragment", "USDT prices - From ($fromCurrency): $usdtPriceFrom, To ($toCurrency): $usdtPriceTo")
+            
+            if (usdtPriceFrom != null && usdtPriceTo != null && 
+                usdtPriceFrom > BigDecimal.ZERO && usdtPriceTo > BigDecimal.ZERO) {
+                // Convert using USDT as stable reference
+                // amount in fromCurrency / usdtPriceFrom = amount in USDT
+                // amount in USDT * usdtPriceTo = amount in toCurrency
+                val amountInUsdt = amount.divide(usdtPriceFrom, 18, RoundingMode.HALF_UP)
+                val result = amountInUsdt.multiply(usdtPriceTo)
+                android.util.Log.d("NFCPaymentFragment", "Conversion via USDT: $amount $fromCurrency -> $amountInUsdt USDT -> $result $toCurrency")
+                return result
+            }
+            
+            // Fallback to BTC if USDT not available
+            val btcUid = "bitcoin"
             val btcPriceFrom = marketKit.coinPrice(btcUid, fromCurrency)?.value ?: return null
-            // Get BTC price in target currency
             val btcPriceTo = marketKit.coinPrice(btcUid, toCurrency)?.value ?: return null
             
             if (btcPriceFrom <= BigDecimal.ZERO || btcPriceTo <= BigDecimal.ZERO) {
                 return null
             }
             
-            // Convert: amount in fromCurrency -> BTC -> toCurrency
-            // amount / btcPriceFrom = amount in BTC
-            // amount in BTC * btcPriceTo = amount in toCurrency
-            val amountInBtc = amount.divide(btcPriceFrom, 18, RoundingMode.HALF_UP)
-            amountInBtc.multiply(btcPriceTo)
+            val exchangeRate = btcPriceTo.divide(btcPriceFrom, 18, RoundingMode.HALF_UP)
+            amount.multiply(exchangeRate)
         } catch (e: Exception) {
+            android.util.Log.e("NFCPaymentFragment", "Error converting currency: $fromCurrency -> $toCurrency", e)
             null
         }
     }

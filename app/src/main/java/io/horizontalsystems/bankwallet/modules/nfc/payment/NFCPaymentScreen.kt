@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -61,6 +62,7 @@ fun NFCPaymentScreen(
 ) {
     var selectedToken by remember { mutableStateOf<CustomerTokenOption?>(null) }
     val view = LocalView.current
+    val configuration = LocalConfiguration.current
     
     // Auto-select first valid token if only one option with sufficient balance
     LaunchedEffect(availableTokens) {
@@ -70,8 +72,17 @@ fun NFCPaymentScreen(
         }
     }
 
-    // Calculate max height for token list - approximately 6 items (each ~60dp + 8dp spacing)
-    val tokenListMaxHeight = 408.dp
+    // Calculate max height for token list based on screen size
+    // Each item is approximately 56dp (48dp height + 8dp spacing) for compact cells
+    // Small screens (<640dp): show 2.5 items = ~140dp
+    // Medium screens (640-800dp): show 4 items = ~224dp
+    // Large screens (>800dp): show 5 items = ~280dp
+    val isSmallScreen = configuration.screenHeightDp < 640
+    val tokenListMaxHeight = when {
+        configuration.screenHeightDp < 640 -> 140.dp  // Small screens: ~2.5 items
+        configuration.screenHeightDp < 800 -> 224.dp  // Medium screens: 4 items
+        else -> 280.dp                                 // Large screens: 5 items
+    }
     
     ComposeAppTheme {
         HSScaffold(
@@ -146,11 +157,11 @@ fun NFCPaymentScreen(
                                 }
                             }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
                 
-                VSpacer(16.dp)
+                VSpacer(12.dp)
                 
                 // Bottom section with selected token and confirm button
                 Column(
@@ -216,13 +227,27 @@ fun NFCPaymentScreen(
 }
 
 /**
- * Format amount to show maximum 8 decimal places
+ * Format crypto amount intelligently based on the value.
+ * - Values >= 1: show up to 6 significant decimal places
+ * - Values < 1 but >= 0.001: show up to 6 decimal places
+ * - Very small values: show up to 8 decimal places
+ * Always removes trailing zeros.
  */
 private fun formatAmount(amount: String): String {
     return try {
         val value = amount.toBigDecimal()
-        if (value.scale() > 8) {
-            value.setScale(8, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+        
+        val maxDecimals = when {
+            value >= java.math.BigDecimal.ONE -> 6           // >= 1: up to 6 decimals
+            value >= java.math.BigDecimal("0.001") -> 6      // >= 0.001: up to 6 decimals
+            value >= java.math.BigDecimal("0.000001") -> 8   // >= 0.000001: up to 8 decimals
+            else -> 10                                        // Very small: up to 10 decimals
+        }
+        
+        if (value.scale() > maxDecimals) {
+            value.setScale(maxDecimals, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros()
+                .toPlainString()
         } else {
             value.stripTrailingZeros().toPlainString()
         }
@@ -272,6 +297,7 @@ private fun getNetworkName(blockchainUid: String): String {
 
 /**
  * Cell for displaying a token option in NFC payment selection
+ * Compact design for better fit on small screens
  */
 @Composable
 private fun NFCTokenCell(
@@ -288,21 +314,21 @@ private fun NFCTokenCell(
             .background(
                 color = if (isSelected) ComposeAppTheme.colors.jacob.copy(alpha = 0.1f) 
                        else ComposeAppTheme.colors.lawrence,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(8.dp)
             )
             .then(
                 if (option.hasSufficientBalance) {
                     Modifier.clickable(onClick = onClick)
                 } else Modifier
             )
-            .padding(12.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
             .graphicsLayer(alpha = alpha),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Selection indicator
+        // Selection indicator - smaller
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(20.dp)
                 .background(
                     color = if (isSelected) ComposeAppTheme.colors.jacob 
                            else ComposeAppTheme.colors.grey.copy(alpha = 0.2f),
@@ -315,14 +341,14 @@ private fun NFCTokenCell(
                     painter = painterResource(R.drawable.icon_20_check_1),
                     contentDescription = null,
                     tint = ComposeAppTheme.colors.white,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
         
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
         
-        // Token icon from network
+        // Token icon from network - smaller
         Image(
             painter = rememberAsyncImagePainter(
                 model = iconUrl,
@@ -330,68 +356,61 @@ private fun NFCTokenCell(
             ),
             contentDescription = option.tokenOption.symbol,
             modifier = Modifier
-                .size(32.dp)
+                .size(28.dp)
                 .clip(CircleShape),
             contentScale = ContentScale.Crop
         )
         
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
         
-        // Token info
+        // Token info - more compact
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = option.tokenOption.symbol,
-                    style = ComposeAppTheme.typography.body,
+                    style = ComposeAppTheme.typography.captionSB,
                     color = ComposeAppTheme.colors.leah
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = getNetworkName(option.tokenOption.blockchainUid),
                     style = ComposeAppTheme.typography.micro,
                     color = ComposeAppTheme.colors.grey
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = stringResource(R.string.NFC_YourBalance),
-                    style = ComposeAppTheme.typography.caption,
-                    color = ComposeAppTheme.colors.grey
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
                     text = "${option.balance?.stripTrailingZeros()?.toPlainString() ?: "0"}",
-                    style = ComposeAppTheme.typography.caption,
+                    style = ComposeAppTheme.typography.micro,
                     color = if (option.hasSufficientBalance) ComposeAppTheme.colors.remus 
                            else ComposeAppTheme.colors.lucian,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            if (!option.hasSufficientBalance) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.NFC_InsufficientBalance),
-                    style = ComposeAppTheme.typography.micro,
-                    color = ComposeAppTheme.colors.lucian
-                )
+                if (!option.hasSufficientBalance) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.NFC_InsufficientBalance),
+                        style = ComposeAppTheme.typography.micro,
+                        color = ComposeAppTheme.colors.lucian
+                    )
+                }
             }
         }
         
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         
-        // Amount to pay - right aligned
+        // Amount to pay - right aligned, compact
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = stringResource(R.string.NFC_ToPay),
                 style = ComposeAppTheme.typography.micro,
                 color = ComposeAppTheme.colors.grey
             )
-            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = formatAmount(option.tokenOption.amount),
-                style = ComposeAppTheme.typography.captionSB,
+                style = ComposeAppTheme.typography.caption,
                 color = ComposeAppTheme.colors.leah,
                 maxLines = 1
             )
