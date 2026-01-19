@@ -7,10 +7,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -75,6 +77,8 @@ fun NFCSendScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.checkNFCStatus()
+                // Reset state if user returned from payment flow
+                viewModel.resetToWaitingIfNeeded()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -96,6 +100,19 @@ fun NFCSendScreen(
                         amount = event.amount,
                         hideAddress = false,
                         amountLocked = true
+                    )
+                )
+                viewModel.clearNavigationEvent()
+            }
+            is NFCSendNavigationEvent.NavigateToNFCPayment -> {
+                navController.slideFromRight(
+                    R.id.nfcPaymentFragment,
+                    io.horizontalsystems.bankwallet.modules.nfc.payment.NFCPaymentFragment.Input(
+                        title = paymentTitle,
+                        fiatAmount = event.fiatAmount,
+                        fiatCurrency = event.fiatCurrency,
+                        availableTokens = event.availableTokens,
+                        sendEntryPointDestId = -1
                     )
                 )
                 viewModel.clearNavigationEvent()
@@ -634,5 +651,4 @@ private fun NFCEnableRequestDialog(
         }
     }
 }
-
 

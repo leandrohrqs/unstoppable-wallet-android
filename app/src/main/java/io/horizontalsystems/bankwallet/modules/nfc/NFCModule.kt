@@ -3,6 +3,7 @@ package io.horizontalsystems.bankwallet.modules.nfc
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import io.horizontalsystems.bankwallet.core.App
+import io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager
 
 /**
  * Module for NFC payment functionality.
@@ -13,6 +14,9 @@ object NFCModule {
     class Factory : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            // Initialize NFCConfigManager if not already initialized
+            NFCConfigManager.initialize(App.instance)
+            
             return when {
                 modelClass.isAssignableFrom(NFCViewModel::class.java) -> {
                     NFCViewModel(

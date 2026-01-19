@@ -1713,4 +1713,10 @@
     <string name="NFC_DisableInfo">Para desativar, vá em Configurações &gt; Configurações do Aplicativo</string>
     <string name="NFC_Settings">Configurações</string>
     <string name="NFC_SelectCurrency">Selecionar Moeda</string>
+    <string name="NFC_ReceiverWallet">Carteira Receptora</string>
+    <string name="NFC_SenderWallet">Carteira Emissora</string>
+    <string name="NFC_AcceptedTokens">Moedas Aceitas</string>
+    <string name="NFC_SelectPaymentMethod">Selecionar Método de Pagamento</string>
+    <string name="NFC_InsufficientBalance">Saldo Insuficiente</string>
+    <string name="NFC_AvailableBalance">Saldo: %s</string>
 </resources>

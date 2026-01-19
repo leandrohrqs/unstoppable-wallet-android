@@ -28,8 +28,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import io.horizontalsystems.bankwallet.R
 import io.horizontalsystems.bankwallet.core.App
+import io.horizontalsystems.bankwallet.core.slideFromRight
+import io.horizontalsystems.bankwallet.entities.Account
 import io.horizontalsystems.bankwallet.entities.Currency
 import io.horizontalsystems.bankwallet.modules.nfc.NFCModule.NFCTab
+import io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager
 import io.horizontalsystems.bankwallet.modules.nfc.core.NFCStatus
 import io.horizontalsystems.bankwallet.modules.nfc.receive.NFCReceiveScreen
 import io.horizontalsystems.bankwallet.modules.nfc.send.NFCSendScreen
@@ -54,7 +57,9 @@ import kotlinx.coroutines.launch
  */
 private enum class NFCSettingsScreen {
     MENU,
-    CURRENCY
+    CURRENCY,
+    RECEIVER_WALLET,
+    SENDER_WALLET
 }
 
 /**
@@ -79,6 +84,13 @@ fun NFCMainScreen(
     val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val currencyManager = remember { App.currencyManager }
     var selectedCurrency by remember { mutableStateOf(currencyManager.baseCurrency) }
+    
+    // NFC Config state
+    val accountManager = remember { App.accountManager }
+    val walletManager = remember { App.walletManager }
+    val receiverAccountId by NFCConfigManager.receiverAccountIdFlow.collectAsState()
+    val senderAccountId by NFCConfigManager.senderAccountIdFlow.collectAsState()
+    val currentTab = tabs.getOrNull(pagerState.currentPage) ?: NFCTab.RECEIVE
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context)
@@ -163,9 +175,27 @@ fun NFCMainScreen(
         ) {
             when (currentSettingsScreen) {
                 NFCSettingsScreen.MENU -> {
+                    // Count tokens in receiver wallet
+                    val receiverAccount = receiverAccountId?.let { accountManager.account(it) } ?: accountManager.activeAccount
+                    val tokensInWallet = walletManager.activeWallets.count { it.account == receiverAccount }
+                    
                     NFCSettingsMenu(
+                        currentTab = currentTab,
                         selectedCurrency = selectedCurrency,
-                        onCurrencyClick = { currentSettingsScreen = NFCSettingsScreen.CURRENCY }
+                        receiverAccountId = receiverAccountId,
+                        senderAccountId = senderAccountId,
+                        tokensInWallet = tokensInWallet,
+                        accountManager = accountManager,
+                        onCurrencyClick = { currentSettingsScreen = NFCSettingsScreen.CURRENCY },
+                        onReceiverWalletClick = { currentSettingsScreen = NFCSettingsScreen.RECEIVER_WALLET },
+                        onSenderWalletClick = { currentSettingsScreen = NFCSettingsScreen.SENDER_WALLET },
+                        onManageCoinsClick = {
+                            // Close the bottom sheet and navigate to manage wallets
+                            coroutineScope.launch { settingsSheetState.hide() }.invokeOnCompletion {
+                                showSettingsMenu = false
+                            }
+                            navController.navigate(R.id.manageWalletsFragment)
+                        }
                     )
                 }
                 NFCSettingsScreen.CURRENCY -> {
@@ -175,6 +205,30 @@ fun NFCMainScreen(
                         onCurrencySelected = { currency ->
                             selectedCurrency = currency
                             currencyManager.baseCurrency = currency
+                            currentSettingsScreen = NFCSettingsScreen.MENU
+                        },
+                        onBack = { currentSettingsScreen = NFCSettingsScreen.MENU }
+                    )
+                }
+                NFCSettingsScreen.RECEIVER_WALLET -> {
+                    NFCWalletSelectorContent(
+                        title = stringResource(R.string.NFC_ReceiverWallet),
+                        accounts = accountManager.accounts.filter { !it.isWatchAccount },
+                        selectedAccountId = receiverAccountId ?: accountManager.activeAccount?.id,
+                        onAccountSelected = { account ->
+                            NFCConfigManager.receiverAccountId = account.id
+                            currentSettingsScreen = NFCSettingsScreen.MENU
+                        },
+                        onBack = { currentSettingsScreen = NFCSettingsScreen.MENU }
+                    )
+                }
+                NFCSettingsScreen.SENDER_WALLET -> {
+                    NFCWalletSelectorContent(
+                        title = stringResource(R.string.NFC_SenderWallet),
+                        accounts = accountManager.accounts.filter { !it.isWatchAccount },
+                        selectedAccountId = senderAccountId ?: accountManager.activeAccount?.id,
+                        onAccountSelected = { account ->
+                            NFCConfigManager.senderAccountId = account.id
                             currentSettingsScreen = NFCSettingsScreen.MENU
                         },
                         onBack = { currentSettingsScreen = NFCSettingsScreen.MENU }
@@ -190,9 +244,20 @@ fun NFCMainScreen(
  */
 @Composable
 private fun NFCSettingsMenu(
+    currentTab: NFCTab,
     selectedCurrency: Currency,
-    onCurrencyClick: () -> Unit
+    receiverAccountId: String?,
+    senderAccountId: String?,
+    tokensInWallet: Int,
+    accountManager: io.horizontalsystems.bankwallet.core.IAccountManager,
+    onCurrencyClick: () -> Unit,
+    onReceiverWalletClick: () -> Unit,
+    onSenderWalletClick: () -> Unit,
+    onManageCoinsClick: () -> Unit
 ) {
+    val receiverAccount = receiverAccountId?.let { accountManager.account(it) } ?: accountManager.activeAccount
+    val senderAccount = senderAccountId?.let { accountManager.account(it) } ?: accountManager.activeAccount
+    
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -222,7 +287,7 @@ private fun NFCSettingsMenu(
         
         VSpacer(12.dp)
         
-        // Settings options
+        // Currency settings (always visible)
         CellUniversalLawrenceSection(
             listOf {
                 SettingsMenuItem(
@@ -232,6 +297,45 @@ private fun NFCSettingsMenu(
                 )
             }
         )
+        
+        VSpacer(16.dp)
+        
+        // Receiver settings (visible on Receive tab)
+        if (currentTab == NFCTab.RECEIVE) {
+            HeaderText(stringResource(R.string.NFC_Receive))
+            CellUniversalLawrenceSection(
+                listOf(
+                    {
+                        SettingsMenuItem(
+                            title = stringResource(R.string.NFC_ReceiverWallet),
+                            value = receiverAccount?.name ?: "-",
+                            onClick = onReceiverWalletClick
+                        )
+                    },
+                    {
+                        SettingsMenuItem(
+                            title = stringResource(R.string.NFC_AcceptedTokens),
+                            value = if (tokensInWallet > 0) "$tokensInWallet" else "-",
+                            onClick = onManageCoinsClick
+                        )
+                    }
+                )
+            )
+        }
+        
+        // Sender settings (visible on Send tab)
+        if (currentTab == NFCTab.SEND) {
+            HeaderText(stringResource(R.string.NFC_Send))
+            CellUniversalLawrenceSection(
+                listOf {
+                    SettingsMenuItem(
+                        title = stringResource(R.string.NFC_SenderWallet),
+                        value = senderAccount?.name ?: "-",
+                        onClick = onSenderWalletClick
+                    )
+                }
+            )
+        }
         
         VSpacer(24.dp)
     }
@@ -267,6 +371,120 @@ private fun SettingsMenuItem(
             tint = ComposeAppTheme.colors.grey,
             modifier = Modifier.padding(end = 16.dp)
         )
+    }
+}
+
+/**
+ * Wallet selector content for receiver/sender wallet selection
+ */
+@Composable
+private fun NFCWalletSelectorContent(
+    title: String,
+    accounts: List<Account>,
+    selectedAccountId: String?,
+    onAccountSelected: (Account) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+    ) {
+        // Header with back button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_back),
+                contentDescription = null,
+                tint = ComposeAppTheme.colors.jacob,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { onBack() }
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = title,
+                style = ComposeAppTheme.typography.headline2,
+                color = ComposeAppTheme.colors.leah,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        
+        // Scrollable content
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+            VSpacer(12.dp)
+            if (accounts.isEmpty()) {
+                Text(
+                    text = "No wallets found",
+                    style = ComposeAppTheme.typography.subhead,
+                    color = ComposeAppTheme.colors.grey,
+                    modifier = Modifier.padding(16.dp)
+                )
+            } else {
+                CellUniversalLawrenceSection(accounts) { account ->
+                    AccountCell(
+                        name = account.name,
+                        description = account.type.detailedDescription,
+                        selected = account.id == selectedAccountId,
+                        onClick = { onAccountSelected(account) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Cell for displaying an account option
+ */
+@Composable
+private fun AccountCell(
+    name: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    RowUniversal(onClick = onClick) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 16.dp)
+        ) {
+            headline2_leah(
+                text = name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(1.dp))
+            subhead2_grey(
+                text = description,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .width(52.dp)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_checkmark_20),
+                    tint = ComposeAppTheme.colors.jacob,
+                    contentDescription = null,
+                )
+            }
+        }
     }
 }
 

@@ -64,10 +64,10 @@ fun SendTronConfirmationScreen(
     amountInputModeViewModel: AmountInputModeViewModel,
     sendEntryPointDestId: Int
 ) {
-    val closeUntilDestId = if (sendEntryPointDestId == 0) {
-        R.id.sendXFragment
-    } else {
-        sendEntryPointDestId
+    val closeUntilDestId = when {
+        sendEntryPointDestId == -1 -> R.id.nfcPaymentFragment // NFC payment - return to NFC screen
+        sendEntryPointDestId == 0 -> R.id.sendXFragment
+        else -> sendEntryPointDestId
     }
     val confirmationData = sendViewModel.confirmationData ?: return
 

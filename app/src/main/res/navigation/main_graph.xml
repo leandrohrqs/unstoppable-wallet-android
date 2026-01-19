@@ -14,6 +14,9 @@
         android:id="@+id/nfcTransactionStatusFragment"
         android:name="io.horizontalsystems.bankwallet.modules.nfc.status.NFCTransactionStatusFragment"/>
     <fragment
+        android:id="@+id/nfcPaymentFragment"
+        android:name="io.horizontalsystems.bankwallet.modules.nfc.payment.NFCPaymentFragment"/>
+    <fragment
         android:id="@+id/sendEvmSettingsFragment"
         android:name="io.horizontalsystems.bankwallet.modules.send.evm.settings.SendEvmSettingsFragment" />
     <fragment

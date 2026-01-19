@@ -163,8 +163,9 @@ private fun SendEvmConfirmationScreen(
                             if (isNFCPayment && transactionHash != null && chainId != null) {
                                 logger.info("NFC payment completed, returning to NFC Send screen")
                                 
-                                // Return to NFC Send screen - status will be shown there
-                                navController.popBackStack(R.id.sendXFragment, true)
+                                // Return to NFC Send screen by popping back to NFCPaymentFragment and removing it
+                                // This removes both sendEvmConfirmationFragment, sendXFragment, and nfcPaymentFragment
+                                navController.popBackStack(R.id.nfcPaymentFragment, true)
                             } else {
                                 navController.popBackStack(input.sendEntryPointDestId, true)
                             }

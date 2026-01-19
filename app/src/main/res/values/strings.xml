@@ -895,6 +895,16 @@
     <string name="NFC_DisableInfo">To disable, go to Settings &gt; App Settings</string>
     <string name="NFC_Settings">Settings</string>
     <string name="NFC_SelectCurrency">Select Currency</string>
+    <string name="NFC_ReceiverWallet">Receiver Wallet</string>
+    <string name="NFC_SenderWallet">Sender Wallet</string>
+    <string name="NFC_AcceptedTokens">Accepted Tokens</string>
+    <string name="NFC_SelectPaymentMethod">Select Payment Method</string>
+    <string name="NFC_InsufficientBalance">Insufficient Balance</string>
+    <string name="NFC_AvailableBalance">Balance: %s</string>
+    <string name="NFC_PaymentAmount">Payment Amount</string>
+    <string name="NFC_SelectedPayment">Selected Payment</string>
+    <string name="NFC_YourBalance">Your balance:</string>
+    <string name="NFC_ToPay">To pay</string>
     <string name="Transactions_WaitForSync">Please wait for the sync to finish.</string>
     <string name="Transactions_Pending">Pending</string>
     <string name="Transactions_Receive">Received</string>

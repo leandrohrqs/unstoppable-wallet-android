@@ -19,9 +19,14 @@ import io.horizontalsystems.bankwallet.entities.Address
 import io.horizontalsystems.bankwallet.entities.Wallet
 import io.horizontalsystems.bankwallet.modules.nfc.core.BlockchainService
 import io.horizontalsystems.bankwallet.modules.nfc.core.EIP681Parser
+import io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager
 import io.horizontalsystems.bankwallet.modules.nfc.core.NFCManager
+import io.horizontalsystems.bankwallet.modules.nfc.core.NFCPaymentRequest
+import io.horizontalsystems.bankwallet.modules.nfc.core.TokenPaymentOption
 import io.horizontalsystems.bankwallet.modules.nfc.core.WalletIntegrationHelper
+import io.horizontalsystems.marketkit.models.BlockchainType
 import io.horizontalsystems.marketkit.models.TokenType
+import java.math.BigDecimal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,6 +47,8 @@ class NFCSendViewModel(
         private const val TAG = "NFCSendViewModel"
         const val ACTION_PAYMENT_URI_RECEIVED = "io.horizontalsystems.bankwallet.PAYMENT_URI_RECEIVED"
         const val EXTRA_PAYMENT_URI = "payment_uri"
+        const val ACTION_PAYMENT_REQUEST_RECEIVED = "io.horizontalsystems.bankwallet.PAYMENT_REQUEST_RECEIVED"
+        const val EXTRA_PAYMENT_REQUEST = "payment_request"
         const val ACTION_TRANSACTION_SENT = "io.horizontalsystems.bankwallet.NFC_TRANSACTION_SENT"
         const val EXTRA_TRANSACTION_HASH = "transaction_hash"
         const val EXTRA_CHAIN_ID = "chain_id"
@@ -63,6 +70,12 @@ class NFCSendViewModel(
                         handlePaymentUri(paymentUri)
                     }
                 }
+                ACTION_PAYMENT_REQUEST_RECEIVED -> {
+                    val paymentRequest = intent.getStringExtra(EXTRA_PAYMENT_REQUEST)
+                    if (paymentRequest != null) {
+                        handlePaymentRequest(paymentRequest)
+                    }
+                }
                 ACTION_TRANSACTION_SENT -> {
                     val transactionHash = intent.getStringExtra(EXTRA_TRANSACTION_HASH)
                     val chainId = intent.getIntExtra(EXTRA_CHAIN_ID, -1)
@@ -78,6 +91,7 @@ class NFCSendViewModel(
         loadWalletAddress()
         val intentFilter = IntentFilter().apply {
             addAction(ACTION_PAYMENT_URI_RECEIVED)
+            addAction(ACTION_PAYMENT_REQUEST_RECEIVED)
             addAction(ACTION_TRANSACTION_SENT)
         }
         LocalBroadcastManager.getInstance(App.instance).registerReceiver(paymentUriReceiver, intentFilter)
@@ -216,6 +230,166 @@ class NFCSendViewModel(
     }
     
     /**
+     * Handle multi-token payment request received from merchant.
+     * Shows token selection screen to the customer.
+     */
+    fun handlePaymentRequest(paymentRequestJson: String) {
+        Log.d(TAG, "📥 [CUSTOMER] Received payment request: $paymentRequestJson")
+        
+        // Update status to show device was connected
+        uiState = uiState.copy(
+            paymentStatus = SendPaymentStatus.CONNECTED
+        )
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val paymentRequest = NFCPaymentRequest.fromJson(paymentRequestJson)
+                if (paymentRequest == null) {
+                    logError("Failed to parse payment request", null)
+                    withContext(Dispatchers.Main) {
+                        uiState = uiState.copy(
+                            statusMessage = "Invalid payment request",
+                            paymentStatus = SendPaymentStatus.FAILED
+                        )
+                    }
+                    return@launch
+                }
+                
+                val senderAccountId = NFCConfigManager.senderAccountId
+                
+                // Process each token option and check balances
+                val customerOptions = paymentRequest.tokens.map { tokenOption ->
+                    val blockchainType = walletIntegrationHelper.getBlockchainTypeFromUid(tokenOption.blockchainUid)
+                    val wallet = if (blockchainType != null) {
+                        findWalletForToken(tokenOption.tokenAddress, blockchainType)
+                    } else null
+                    
+                    val balance = wallet?.let { w ->
+                        adapterManager.getBalanceAdapterForWallet(w)?.balanceData?.available
+                    }
+                    
+                    val requiredAmount = tokenOption.getAmountBigDecimal()
+                    val hasSufficientBalance = balance != null && balance >= requiredAmount
+                    
+                    CustomerTokenOption(
+                        tokenOption = tokenOption,
+                        balance = balance,
+                        hasSufficientBalance = hasSufficientBalance,
+                        wallet = wallet
+                    )
+                }.sortedWith(
+                    // Sort: sufficient balance first, then by balance descending
+                    compareByDescending<CustomerTokenOption> { it.hasSufficientBalance }
+                        .thenByDescending { it.balance ?: BigDecimal.ZERO }
+                )
+                
+                withContext(Dispatchers.Main) {
+                    if (customerOptions.isEmpty()) {
+                        uiState = uiState.copy(
+                            statusMessage = "No payment tokens available",
+                            paymentStatus = SendPaymentStatus.FAILED
+                        )
+                        return@withContext
+                    }
+                    
+                    // Navigate to NFC Payment screen with all options
+                    // The selection will be done on that screen
+                    uiState = uiState.copy(
+                        availableTokens = customerOptions,
+                        fiatAmount = paymentRequest.fiat.amount,
+                        fiatCurrency = paymentRequest.fiat.currency,
+                        paymentStatus = SendPaymentStatus.CONNECTED,
+                        navigationEvent = NFCSendNavigationEvent.NavigateToNFCPayment(
+                            fiatAmount = paymentRequest.fiat.amount,
+                            fiatCurrency = paymentRequest.fiat.currency,
+                            availableTokens = customerOptions
+                        )
+                    )
+                }
+                
+            } catch (e: Exception) {
+                logError("Error handling payment request", e)
+                withContext(Dispatchers.Main) {
+                    uiState = uiState.copy(
+                        statusMessage = "Error processing payment request: ${e.message}",
+                        paymentStatus = SendPaymentStatus.FAILED
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Select a token (just marks it as selected, doesn't navigate yet)
+     */
+    fun selectToken(option: CustomerTokenOption) {
+        if (!option.hasSufficientBalance) return
+        
+        uiState = uiState.copy(
+            selectedToken = option
+        )
+    }
+    
+    /**
+     * Confirm the selected token and navigate to payment
+     */
+    fun confirmSelectedToken() {
+        val option = uiState.selectedToken ?: return
+        
+        val wallet = option.wallet
+        if (wallet == null) {
+            uiState = uiState.copy(
+                statusMessage = "Token not available in your wallet",
+                paymentStatus = SendPaymentStatus.FAILED,
+                showTokenSelector = false,
+                selectedToken = null
+            )
+            return
+        }
+        
+        if (!option.hasSufficientBalance) {
+            uiState = uiState.copy(
+                statusMessage = "Insufficient balance for ${option.tokenOption.symbol}",
+                paymentStatus = SendPaymentStatus.FAILED,
+                showTokenSelector = false,
+                selectedToken = null
+            )
+            return
+        }
+        
+        uiState = uiState.copy(
+            showTokenSelector = false,
+            selectedToken = null,
+            navigationEvent = NFCSendNavigationEvent.NavigateToSend(
+                wallet = wallet,
+                recipientAddress = option.tokenOption.receiverAddress,
+                amount = option.tokenOption.getAmountBigDecimal()
+            ),
+            paymentStatus = SendPaymentStatus.CONNECTED
+        )
+    }
+    
+    /**
+     * Called when customer selects a token for payment (legacy - direct selection).
+     */
+    fun selectTokenForPayment(option: CustomerTokenOption) {
+        selectToken(option)
+        confirmSelectedToken()
+    }
+    
+    /**
+     * Cancel token selection
+     */
+    fun cancelTokenSelection() {
+        uiState = uiState.copy(
+            showTokenSelector = false,
+            availableTokens = emptyList(),
+            selectedToken = null,
+            paymentStatus = null
+        )
+    }
+    
+    /**
      * Called when transaction is sent - update status and start monitoring
      */
     fun onTransactionSent(transactionHash: String, chainId: Int) {
@@ -241,10 +415,33 @@ class NFCSendViewModel(
     fun clearNavigationEvent() {
         uiState = uiState.copy(navigationEvent = null)
     }
+    
+    /**
+     * Reset to waiting state when user returns from payment flow.
+     * Called when ON_RESUME is detected and we're in CONNECTED or later state.
+     */
+    fun resetToWaitingIfNeeded() {
+        val currentStatus = uiState.paymentStatus
+        // Reset if we're in a state that indicates we navigated away
+        if (currentStatus == SendPaymentStatus.CONNECTED || 
+            currentStatus == SendPaymentStatus.CONFIRMED ||
+            currentStatus == SendPaymentStatus.FAILED) {
+            Log.d(TAG, "Resetting to WAITING state from $currentStatus")
+            uiState = uiState.copy(
+                paymentStatus = SendPaymentStatus.WAITING,
+                statusMessage = "Ready for NFC payment",
+                availableTokens = emptyList(),
+                selectedToken = null,
+                fiatAmount = null,
+                fiatCurrency = null,
+                navigationEvent = null
+            )
+        }
+    }
 
     /**
      * Find wallet matching the token address and blockchain type.
-     * For native tokens (address = 0x000...), matches by blockchain type.
+     * For native tokens (address = "native" or 0x000...), matches by blockchain type.
      * For ERC-20 tokens, matches by contract address.
      */
     private suspend fun findWalletForToken(tokenAddress: String, blockchainType: io.horizontalsystems.marketkit.models.BlockchainType): Wallet? {
@@ -253,16 +450,21 @@ class NFCSendViewModel(
                 val activeAccount = accountManager.activeAccount ?: return@withContext null
                 val wallets = App.walletManager.activeWallets
 
-                val isNativeToken = tokenAddress == "0x0000000000000000000000000000000000000000" ||
+                val isNativeToken = tokenAddress == "native" ||
+                        tokenAddress == "0x0000000000000000000000000000000000000000" ||
                         tokenAddress.lowercase() == "0x0000000000000000000000000000000000000000"
 
                 if (isNativeToken) {
+                    // For native tokens, match by blockchain type and any native-like token type
                     val wallet = wallets.firstOrNull { wallet ->
                         wallet.token.blockchainType == blockchainType &&
-                        wallet.token.type is TokenType.Native
+                        (wallet.token.type is TokenType.Native ||
+                         wallet.token.type is TokenType.Derived ||
+                         wallet.token.type is TokenType.AddressTyped)
                     }
                     return@withContext wallet
                 } else {
+                    // For contract-based tokens, match by address
                     val wallet = wallets.firstOrNull { wallet ->
                         wallet.token.blockchainType == blockchainType &&
                         (wallet.token.type as? TokenType.Eip20)?.address?.equals(tokenAddress, ignoreCase = true) == true
@@ -430,8 +632,40 @@ data class NFCSendUiState(
     val nfcSystemEnabled: Boolean = false,
     val nfcAppEnabled: Boolean = false,
     val nfcAvailable: Boolean = false,
-    val paymentStatus: SendPaymentStatus? = null
+    val paymentStatus: SendPaymentStatus? = null,
+    // Multi-token payment selection
+    val showTokenSelector: Boolean = false,
+    val availableTokens: List<CustomerTokenOption> = emptyList(),
+    val selectedToken: CustomerTokenOption? = null,
+    val fiatAmount: String? = null,
+    val fiatCurrency: String? = null
 )
+
+/**
+ * Customer token option with balance information
+ */
+@kotlinx.parcelize.Parcelize
+data class CustomerTokenOption(
+    val tokenOption: TokenPaymentOption,
+    val balanceString: String?,
+    val hasSufficientBalance: Boolean,
+    val wallet: Wallet?
+) : android.os.Parcelable {
+    val balance: BigDecimal?
+        get() = balanceString?.let { BigDecimal(it) }
+    
+    constructor(
+        tokenOption: TokenPaymentOption,
+        balance: BigDecimal?,
+        hasSufficientBalance: Boolean,
+        wallet: Wallet?
+    ) : this(
+        tokenOption = tokenOption,
+        balanceString = balance?.toPlainString(),
+        hasSufficientBalance = hasSufficientBalance,
+        wallet = wallet
+    )
+}
 
 /**
  * Navigation events for NFC Send screen
@@ -441,6 +675,12 @@ sealed class NFCSendNavigationEvent {
         val wallet: Wallet,
         val recipientAddress: String,
         val amount: java.math.BigDecimal
+    ) : NFCSendNavigationEvent()
+    
+    data class NavigateToNFCPayment(
+        val fiatAmount: String,
+        val fiatCurrency: String,
+        val availableTokens: List<CustomerTokenOption>
     ) : NFCSendNavigationEvent()
 }
 
