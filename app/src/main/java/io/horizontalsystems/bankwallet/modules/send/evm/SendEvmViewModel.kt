@@ -34,6 +34,9 @@ class SendEvmViewModel(
     private var amountState = amountService.stateFlow.value
     private var addressState = addressService.stateFlow.value
 
+    // Get sender address from EVM kit
+    val senderAddress: String = adapter.evmKitWrapper.evmKit.receiveAddress.eip55
+
     var coinRate by mutableStateOf(xRateService.getRate(sendToken.coin.uid))
         private set
 
@@ -57,6 +60,7 @@ class SendEvmViewModel(
         canBeSend = amountState.canBeSend && addressState.canBeSend,
         showAddressInput = showAddressInput,
         address = address,
+        senderAddress = senderAddress,
     )
 
     fun onEnterAmount(amount: BigDecimal?) {

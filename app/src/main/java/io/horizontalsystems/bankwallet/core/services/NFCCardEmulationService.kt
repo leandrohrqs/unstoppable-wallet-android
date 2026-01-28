@@ -31,13 +31,35 @@ class NFCCardEmulationService : HostApduService() {
         private val SELECT_PREFIX = byteArrayOf(0x00, 0xA4.toByte(), 0x04, 0x00)
         private val PAYMENT_CMD_PREFIX = byteArrayOf(0x80.toByte(), 0xCF.toByte(), 0x00.toByte(), 0x00.toByte())
         private val PAYMENT_URI_CMD_PREFIX = byteArrayOf(0x80.toByte(), 0xD0.toByte(), 0x00, 0x00)
+        
+        // Multi-token payment request commands
+        private const val INS_PAYMENT_REQUEST = 0xD1.toByte()
+        private const val INS_PAYMENT_REQUEST_START = 0xD2.toByte()
+        private const val INS_PAYMENT_REQUEST_CHUNK = 0xD3.toByte()
     }
+    
+    // Chunked transfer buffer (instance-level to handle concurrent connections)
+    private var chunkedBuffer: ByteArray? = null
+    private var expectedTotalSize: Int = 0
+    private var receivedSize: Int = 0
 
     override fun onCreate() {
         super.onCreate()
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
+        // Check if NFC is enabled in app settings
+        if (!App.localStorage.nfcEnabled) {
+            logError("NFC payment rejected - NFC not enabled in app settings", null)
+            return UNKNOWN
+        }
+        
+        // Check if NFC Send screen is active - only process commands when on the send screen
+        if (!io.horizontalsystems.bankwallet.modules.nfc.core.NFCConfigManager.isSendScreenActive) {
+            Log.d(TAG, "📵 [CUSTOMER] NFC command ignored - Send screen not active")
+            return UNKNOWN
+        }
+
         sendBroadcast("NFC reader connected - processing request")
 
         // Handle SELECT command
@@ -100,8 +122,208 @@ class NFCCardEmulationService : HostApduService() {
             }
         }
 
+        // Handle multi-token payment request commands (check INS byte at position 1)
+        if (commandApdu.size >= 5 && commandApdu[0] == 0x80.toByte()) {
+            when (commandApdu[1]) {
+                INS_PAYMENT_REQUEST -> return handlePaymentRequestCommand(commandApdu)
+                INS_PAYMENT_REQUEST_START -> return handlePaymentRequestStart(commandApdu)
+                INS_PAYMENT_REQUEST_CHUNK -> return handlePaymentRequestChunk(commandApdu)
+            }
+        }
+
         // Unknown command
         return UNKNOWN
+    }
+    
+    /**
+     * Handle chunked transfer start - receive total size info.
+     */
+    private fun handlePaymentRequestStart(commandApdu: ByteArray): ByteArray {
+        try {
+            if (commandApdu.size < 9) {
+                logError("PAYMENT_REQUEST_START command too short", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+            
+            // P1:P2 = total chunks (not used currently, but could be for validation)
+            // Data = 4 bytes total size
+            val totalSize = ((commandApdu[5].toInt() and 0xFF) shl 24) or
+                           ((commandApdu[6].toInt() and 0xFF) shl 16) or
+                           ((commandApdu[7].toInt() and 0xFF) shl 8) or
+                           (commandApdu[8].toInt() and 0xFF)
+            
+            Log.d(TAG, "📥 [CUSTOMER] Starting chunked receive, total size: $totalSize bytes")
+            
+            // Initialize buffer
+            chunkedBuffer = ByteArray(totalSize)
+            expectedTotalSize = totalSize
+            receivedSize = 0
+            
+            return SELECT_OK
+        } catch (e: Exception) {
+            logError("Error handling PAYMENT_REQUEST_START", e)
+            return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+        }
+    }
+    
+    /**
+     * Handle chunked transfer chunk - receive a piece of data.
+     */
+    private fun handlePaymentRequestChunk(commandApdu: ByteArray): ByteArray {
+        try {
+            if (commandApdu.size < 6) {
+                logError("PAYMENT_REQUEST_CHUNK command too short", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+            
+            val isLastChunk = commandApdu[2] == 0x01.toByte()
+            val chunkIndex = commandApdu[3].toInt() and 0xFF
+            val dataLength = commandApdu[4].toInt() and 0xFF
+            
+            if (commandApdu.size < 5 + dataLength) {
+                logError("PAYMENT_REQUEST_CHUNK data incomplete", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+            
+            val buffer = chunkedBuffer
+            if (buffer == null) {
+                logError("No chunked transfer in progress", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+            
+            // Copy chunk data to buffer
+            val chunkData = Arrays.copyOfRange(commandApdu, 5, 5 + dataLength)
+            if (receivedSize + dataLength > buffer.size) {
+                logError("Chunk would overflow buffer", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+            
+            System.arraycopy(chunkData, 0, buffer, receivedSize, dataLength)
+            receivedSize += dataLength
+            
+            Log.d(TAG, "📥 [CUSTOMER] Received chunk $chunkIndex, ${dataLength} bytes, total: $receivedSize/${expectedTotalSize}")
+            
+            if (isLastChunk || receivedSize >= expectedTotalSize) {
+                // All chunks received - process the complete data
+                Log.d(TAG, "📥 [CUSTOMER] All chunks received, processing...")
+                val jsonString = String(buffer, 0, receivedSize, StandardCharsets.UTF_8)
+                
+                // Reset chunked state
+                chunkedBuffer = null
+                expectedTotalSize = 0
+                receivedSize = 0
+                
+                if (jsonString.startsWith("{") && jsonString.contains("tokens")) {
+                    Log.d(TAG, "📥 [CUSTOMER] Valid payment request received")
+                    sendPaymentRequestBroadcast(jsonString)
+                    sendBroadcast("Payment request received - select payment method")
+                    return SELECT_OK
+                } else {
+                    logError("Invalid JSON in chunked data", null)
+                    return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+                }
+            }
+            
+            return SELECT_OK
+        } catch (e: Exception) {
+            logError("Error handling PAYMENT_REQUEST_CHUNK", e)
+            chunkedBuffer = null
+            return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+        }
+    }
+    
+    /**
+     * Handle single-chunk payment request command (INS=0xD1).
+     * Used when payload fits in a single APDU.
+     */
+    private fun handlePaymentRequestCommand(commandApdu: ByteArray): ByteArray {
+        try {
+            // APDU format: CLA INS P1 P2 Lc Data
+            // Header is 4 bytes (CLA INS P1 P2), then Lc (1 byte), then data
+            val headerSize = 4
+            
+            if (commandApdu.size <= headerSize + 1) {
+                logError("PAYMENT_REQUEST command received but no data", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+
+            val dataLength = commandApdu[headerSize].toInt() and 0xFF
+            val dataStartIndex = headerSize + 1
+
+            if (commandApdu.size < dataStartIndex + dataLength) {
+                logError("PAYMENT_REQUEST command data incomplete. Expected ${dataStartIndex + dataLength}, got ${commandApdu.size}", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+
+            val payloadData = Arrays.copyOfRange(commandApdu, dataStartIndex, dataStartIndex + dataLength)
+            
+            // Try to parse as JSON directly
+            val jsonString = tryParsePaymentRequestJson(payloadData)
+            
+            if (jsonString != null) {
+                Log.d(TAG, "📥 [CUSTOMER] Received payment request: ${jsonString.take(100)}...")
+                sendPaymentRequestBroadcast(jsonString)
+                sendBroadcast("Payment request received - select payment method")
+                return SELECT_OK
+            } else {
+                logError("Failed to parse payment request JSON", null)
+                return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+            }
+        } catch (e: Exception) {
+            logError("Error handling PAYMENT_REQUEST command", e)
+            return byteArrayOf(0x6A.toByte(), 0x80.toByte())
+        }
+    }
+    
+    /**
+     * Try to parse payment request JSON from NDEF or raw data.
+     */
+    private fun tryParsePaymentRequestJson(data: ByteArray): String? {
+        try {
+            // First try to parse as NDEF Text record
+            if (data.size > 7 && data[0] == 0xD1.toByte()) {
+                // NDEF format - skip header and extract text
+                val payloadLength = data[2].toInt() and 0xFF
+                val langCodeLength = data[4].toInt() and 0x3F
+                val textStart = 5 + langCodeLength
+                
+                if (data.size >= textStart + (payloadLength - 1 - langCodeLength)) {
+                    val textBytes = Arrays.copyOfRange(data, textStart, textStart + payloadLength - 1 - langCodeLength)
+                    val text = String(textBytes, StandardCharsets.UTF_8)
+                    if (text.startsWith("{") && text.contains("tokens")) {
+                        return text
+                    }
+                }
+            }
+            
+            // Try to parse as raw JSON
+            val rawText = String(data, StandardCharsets.UTF_8)
+            if (rawText.startsWith("{") && rawText.contains("tokens")) {
+                return rawText
+            }
+            
+            // Try skipping any prefix bytes until we find JSON
+            for (i in 0 until minOf(20, data.size)) {
+                if (data[i] == '{'.code.toByte()) {
+                    val jsonBytes = Arrays.copyOfRange(data, i, data.size)
+                    val jsonText = String(jsonBytes, StandardCharsets.UTF_8)
+                    if (jsonText.contains("tokens")) {
+                        return jsonText
+                    }
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            logError("Error parsing payment request JSON", e)
+            return null
+        }
+    }
+    
+    private fun sendPaymentRequestBroadcast(paymentRequest: String) {
+        val intent = Intent("io.horizontalsystems.bankwallet.PAYMENT_REQUEST_RECEIVED")
+        intent.putExtra("payment_request", paymentRequest)
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun handleNDEFPaymentRequest(ndefData: ByteArray): ByteArray {

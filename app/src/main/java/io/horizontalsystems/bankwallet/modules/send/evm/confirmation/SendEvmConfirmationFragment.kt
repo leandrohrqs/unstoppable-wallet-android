@@ -161,18 +161,11 @@ private fun SendEvmConfirmationScreen(
                             }
 
                             if (isNFCPayment && transactionHash != null && chainId != null) {
-                                logger.info("NFC payment completed, navigating to transaction status screen")
+                                logger.info("NFC payment completed, returning to NFC Send screen")
                                 
-                                navController.popBackStack(R.id.sendXFragment, true)
-                                delay(300)
-                                
-                                navController.slideFromRight(
-                                    R.id.nfcTransactionStatusFragment,
-                                    NFCTransactionStatusFragment.Input(
-                                        transactionHash = transactionHash,
-                                        chainId = chainId
-                                    )
-                                )
+                                // Return to NFC Send screen by popping back to NFCPaymentFragment and removing it
+                                // This removes both sendEvmConfirmationFragment, sendXFragment, and nfcPaymentFragment
+                                navController.popBackStack(R.id.nfcPaymentFragment, true)
                             } else {
                                 navController.popBackStack(input.sendEntryPointDestId, true)
                             }

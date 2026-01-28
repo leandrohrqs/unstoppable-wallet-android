@@ -60,6 +60,8 @@ class LocalStorageManager(
     private val ENCRYPTION_CHECKER_TEXT = "encryption_checker_text"
     private val BITCOIN_DERIVATION = "bitcoin_derivation"
     private val TOR_ENABLED = "tor_enabled"
+    private val NFC_ENABLED = "nfc_enabled"
+    private val NFC_ENABLE_DIALOG_DISMISSED = "nfc_enable_dialog_dismissed"
     private val APP_LAUNCH_COUNT = "app_launch_count"
     private val RATE_APP_LAST_REQ_TIME = "rate_app_last_req_time"
     private val BALANCE_HIDDEN = "balance_hidden"
@@ -368,6 +370,18 @@ class LocalStorageManager(
         set(enabled) {
             //keep using commit() for synchronous storing
             preferences.edit().putBoolean(TOR_ENABLED, enabled).commit()
+        }
+
+    override var nfcEnabled: Boolean
+        get() = preferences.getBoolean(NFC_ENABLED, false)
+        set(enabled) {
+            preferences.edit().putBoolean(NFC_ENABLED, enabled).apply()
+        }
+
+    override var nfcEnableDialogDismissed: Boolean
+        get() = preferences.getBoolean(NFC_ENABLE_DIALOG_DISMISSED, false)
+        set(dismissed) {
+            preferences.edit().putBoolean(NFC_ENABLE_DIALOG_DISMISSED, dismissed).apply()
         }
 
     override var appLaunchCount: Int

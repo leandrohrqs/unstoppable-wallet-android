@@ -103,6 +103,8 @@ interface ILocalStorage {
     var encryptedSampleText: String?
     var bitcoinDerivation: AccountType.Derivation?
     var torEnabled: Boolean
+    var nfcEnabled: Boolean
+    var nfcEnableDialogDismissed: Boolean
     var appLaunchCount: Int
     var rateAppLastRequestTime: Long
     var balanceHidden: Boolean
